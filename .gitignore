@@ -1,38 +1,19 @@
-# OS / Editor
-.DS_Store
-Thumbs.db
-.vscode/
-.idea/
-
-# Env / Secrets / Local Runtime Data
-.env
-.env.*
-!.env.example
+.DS_*
 *.db
-*.sqlite
-*.sqlite3
-data/
-cookies.json
-state.json
+*.db-*
+.claude
+tmp/
+build/
+dist/
+backend/internal/web/dist/*
+!backend/internal/web/dist/
+!backend/internal/web/dist/.keep
 
-# Python
-__pycache__/
-*.py[cod]
-.pytest_cache/
-.venv/
-venv/
+# The .env file may contain secrets, so exclude it from source control.
+.env*
+# .env.example is an exception as it only contains dummy secrets.
+!.env.example
 
-# Node / Frontend
-node_modules/
-frontend/dist/
-backend/internal/web/dist/
-
-# Go binaries
-/fusion
-/news_panel
-*.exe
-*.test
-coverage.out
-
-# Worktrees
-.worktrees/
+# Local verification tools and logs
+backend/.tools/
+backend/.verify/
