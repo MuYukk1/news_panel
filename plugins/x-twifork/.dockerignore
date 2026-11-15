@@ -1,0 +1,14 @@
+# 构建上下文瘦身：镜像仅需 requirements.txt 与 x_twifork/
+tests/
+tools/
+docs/
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+state.json
+state.json.tmp
+cookies.json
+config.yaml
+config.example.yaml
+README.md

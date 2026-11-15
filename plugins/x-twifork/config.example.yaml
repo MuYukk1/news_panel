@@ -1,0 +1,81 @@
+# =====================================================================
+# news_panel 外置 X (Twitter) 采集插件配置样例（x-twifork）
+# ---------------------------------------------------------------------
+# 使用方法：
+#   1. cp config.example.yaml config.yaml 后按需修改；
+#   2. 所有字符串值均支持 ${ENV_VAR} 环境变量展开（未设置时展开为空串），
+#      建议凭证类配置全部走环境变量，避免明文落盘；
+#   3. 契约规范见仓库 docs/PLUGIN_SPEC.md（POST /api/v1/ingest + heartbeat）；
+#   4. 本样例可直接用于 --dry-run 自测（无需真实 Cookie / Token）。
+# =====================================================================
+
+# ---- 基础标识 ---------------------------------------------------------
+source_id: x-twifork-main          # 信源实例唯一标识（幂等键 & 心跳监控维度）
+source_type: x                     # 固定为 x
+# state_file: state.json           # 增量断点文件路径（Docker 内建议 /data/state.json）
+# proxy: "socks5://127.0.0.1:1080" # 可选：HTTP/SOCKS5 代理 URL，透传给 twifork 客户端
+impersonate: chrome124             # curl_cffi 浏览器 TLS 指纹（需安装 twifork[impersonate]）
+log_level: INFO
+
+# ---- news_panel 核心服务契约地址与凭证 --------------------------------
+core:
+  base_url: http://news-panel:8080 # 核心服务地址（自动拼接 /api/v1/ingest 与 /api/v1/heartbeat）
+  token: ${NEWS_PANEL_INGEST_TOKEN} # 核心服务下发的 INGEST_TOKEN（Bearer）
+  # timeout_seconds: 20            # 单次契约请求超时（秒）
+  # ingest_max_retries: 3          # 429/5xx/网络错误的重试次数
+
+# ---- X 备用小号 Cookie（二选一：内联三件套 或 cookies_file） ----------
+# 风控红线：仅使用专用备用小号的 Cookie，严禁在代码中调用自动化密码登录 login()。
+cookies:
+  auth_token: ${X_AUTH_TOKEN}      # 必填；浏览器 DevTools → Application → Cookies → x.com 复制
+  ct0: ${X_CT0}                    # 强烈建议同时提供（缺失时部分端点可能 403）
+  twid: ${X_TWID}                  # 可选
+  # cookies_file: /data/cookies.json  # twifork 兼容 JSON（对象或浏览器导出的 [{name,value}] 数组）
+
+# ---- 采集与拟人化调度（低频 + 抖动 + 作息窗口，抗 Cloudflare / 低封号风控） ----
+fetch:
+  poll_interval_seconds: 900       # 基础轮询间隔（15 分钟；低于 5 会被强制抬升）
+  jitter_seconds: 120              # 每轮叠加 0~120s 随机抖动，打破机械请求节奏
+  max_delay_seconds: 7200          # 静默窗口放大后的单轮等待上限（秒）
+  quiet_hours: "01:00-08:30"       # 拟人化作息：深夜静默窗口（可跨午夜）
+  quiet_hours_multiplier: 4.0      # 静默窗口内轮询间隔放大倍数
+  # active_hours: "08:30-01:00"    # 或改用显式活跃窗口（两者同时配置时 quiet 优先）
+  timezone: "UTC"                  # 作息判断时区；非 UTC 名称需运行环境有 tzdata
+  max_tweets_per_query: 40         # 单账号/单关键词单轮最多拉取条数
+  max_items_per_batch: 100         # 单次 ingest 批量上限（契约硬上限 100）
+  search_product: "Latest"         # X 搜索模式：Latest / Top
+  include_retweets: false          # 默认跳过转推，降低重复噪声
+  first_run_max_items: 20          # 首轮种子策略：仅回灌最近 N 条，避免首启刷屏
+  pace_seconds: 2.0                # 同一轮内相邻上游请求之间的拟人间隔（秒）
+
+# ---- 失败退避 ----------------------------------------------------------
+backoff:
+  initial_seconds: 60              # 限流/瞬时错误的指数退避基数
+  max_seconds: 3600                # 指数退避上限
+  multiplier: 2.0
+  auth_backoff_seconds: 900        # Cookie 失效 / 403 类退避基数（更长，保护账号）
+  auth_error_threshold: 3          # 连续 auth 失败达到该次数 → 心跳上报 error
+
+# ---- 静态跟踪目标（AI 规划关闭或失败时的兜底，DEC-005 降级要求） --------
+accounts:                          # "@handle" 或纯数字 user_id
+  - "@example_ai_lab"
+  - "25073877"                     # 数字 id 可省一次 handle→id 解析请求
+queries:                           # 周期搜索关键词（Latest 模式）
+  - "AI agents"
+  - "限免 OR 羊毛"
+
+# ---- 可选：AI 主动查询规划（OpenAI-compatible；关闭/失败自动回退静态配置） ----
+planner:
+  enabled: false                   # 默认关闭；仅采集上面静态 accounts/queries
+  base_url: https://api.openai.com/v1  # 任意 OpenAI-compatible 服务地址
+  api_key: ${PLANNER_API_KEY}
+  model: gpt-4o-mini
+  topics:                          # 关注主题，用于动态生成/微调关键词与账号
+    - "AI 模型发布与一线泄露"
+    - "投资突发新闻与催化剂"
+    - "薅羊毛与实时线报"
+  interval_minutes: 360            # 规划刷新频率（分钟）
+  merge_with_static: true          # true=与静态列表合并；false=完全替换
+  # max_queries: 8                 # 单次规划最多生成关键词数
+  # max_accounts: 12               # 单次规划最多生成账号数
+  # timeout_seconds: 20            # 规划请求超时（超时即回退静态配置）
