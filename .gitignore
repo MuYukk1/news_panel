@@ -1,0 +1,38 @@
+# OS / Editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Env / Secrets / Local Runtime Data
+.env
+.env.*
+!.env.example
+*.db
+*.sqlite
+*.sqlite3
+data/
+cookies.json
+state.json
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+
+# Node / Frontend
+node_modules/
+frontend/dist/
+backend/internal/web/dist/
+
+# Go binaries
+/fusion
+/news_panel
+*.exe
+*.test
+coverage.out
+
+# Worktrees
+.worktrees/
