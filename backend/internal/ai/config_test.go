@@ -147,6 +147,10 @@ func TestSplitCLIArgs(t *testing.T) {
 	if len(got) != 4 || got[1] != "{{prompt}}" {
 		t.Errorf("whitespace split: %#v", got)
 	}
+	got = splitCLIArgs(`-p,{{prompt}},--tools,"",--model,fast-model`)
+	if len(got) != 6 || got[2] != "--tools" || got[3] != "" || got[5] != "fast-model" {
+		t.Errorf("explicit empty string split failed: %#v", got)
+	}
 	if splitCLIArgs("   ") != nil {
 		t.Errorf("empty args should be nil")
 	}

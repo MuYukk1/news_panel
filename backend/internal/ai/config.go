@@ -172,7 +172,12 @@ func splitCLIArgs(raw string) []string {
 	}
 	out := make([]string, 0, len(parts))
 	for _, p := range parts {
-		if p = strings.TrimSpace(p); p != "" {
+		p = strings.TrimSpace(p)
+		if p == `""` || p == `''` {
+			out = append(out, "")
+			continue
+		}
+		if p != "" {
 			out = append(out, p)
 		}
 	}

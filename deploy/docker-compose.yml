@@ -1,0 +1,60 @@
+services:
+  news-panel:
+    build:
+      context: ..
+      dockerfile: ${NEWS_PANEL_DOCKERFILE:-Dockerfile}
+    image: news-panel:${NEWS_PANEL_TAG:-local}
+    container_name: news-panel
+    restart: unless-stopped
+    ports:
+      - "${NEWS_PANEL_BIND:-127.0.0.1}:${NEWS_PANEL_PORT:-8080}:8080"
+    volumes:
+      - news-panel-data:/data
+    environment:
+      FUSION_PASSWORD: ${FUSION_PASSWORD:?FUSION_PASSWORD must be set in .env}
+      INGEST_TOKEN: ${INGEST_TOKEN:?INGEST_TOKEN must be set in .env}
+      FUSION_LOG_LEVEL: ${FUSION_LOG_LEVEL:-INFO}
+      AI_ENABLED: ${AI_ENABLED:-true}
+      AI_PROVIDER: ${AI_PROVIDER:-openai}
+      AI_BASE_URL: ${AI_BASE_URL:-https://api.openai.com/v1}
+      AI_API_KEY: ${AI_API_KEY:-}
+      AI_MODEL: ${AI_MODEL:-gpt-4o-mini}
+      AI_KEEP_MIN_SCORE: ${AI_KEEP_MIN_SCORE:-45}
+      AI_TIMEOUT_SECONDS: ${AI_TIMEOUT_SECONDS:-15}
+      AI_FALLBACK_MODE: ${AI_FALLBACK_MODE:-keep_l1}
+      AI_OPENAI_JSON_FORMAT: ${AI_OPENAI_JSON_FORMAT:-false}
+      AI_CLI_COMMAND: ${AI_CLI_COMMAND:-}
+      AI_CLI_ARGS: ${AI_CLI_ARGS:-}
+      AI_HTTP_WRITE_TIMEOUT_SECONDS: ${AI_HTTP_WRITE_TIMEOUT_SECONDS:-180}
+      CODEBUDDY_AUTH_TOKEN: ${CODEBUDDY_AUTH_TOKEN:-}
+      CODEBUDDY_API_KEY: ${CODEBUDDY_API_KEY:-}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8080/api/oidc/enabled || curl -fsS http://127.0.0.1:8080/api/oidc/enabled >/dev/null"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  x-twifork:
+    build:
+      context: ../plugins/x-twifork
+      dockerfile: Dockerfile
+    image: news-panel-x-twifork:local
+    container_name: news-panel-x-twifork
+    restart: unless-stopped
+    depends_on:
+      news-panel:
+        condition: service_healthy
+    volumes:
+      - ${TWIFORK_CONFIG:-./x-twifork.test.yaml}:/config/config.yaml:ro
+      - x-twifork-data:/data
+    environment:
+      NEWS_PANEL_INGEST_TOKEN: ${INGEST_TOKEN:?INGEST_TOKEN must be set in .env}
+      X_AUTH_TOKEN: ${X_AUTH_TOKEN:?X_AUTH_TOKEN must be set in .env}
+      X_CT0: ${X_CT0:-}
+      X_TWID: ${X_TWID:-}
+      PLANNER_API_KEY: ${PLANNER_API_KEY:-}
+
+volumes:
+  news-panel-data:
+  x-twifork-data:
