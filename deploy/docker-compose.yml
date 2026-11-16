@@ -3,7 +3,7 @@ services:
     build:
       context: ..
       dockerfile: ${NEWS_PANEL_DOCKERFILE:-Dockerfile}
-    image: news-panel:${NEWS_PANEL_TAG:-local}
+    image: ${NEWS_PANEL_IMAGE:-news-panel}:${NEWS_PANEL_TAG:-local}
     container_name: news-panel
     restart: unless-stopped
     ports:
@@ -14,6 +14,7 @@ services:
       FUSION_PASSWORD: ${FUSION_PASSWORD:?FUSION_PASSWORD must be set in .env}
       INGEST_TOKEN: ${INGEST_TOKEN:?INGEST_TOKEN must be set in .env}
       FUSION_LOG_LEVEL: ${FUSION_LOG_LEVEL:-INFO}
+      FUSION_TRUSTED_PROXIES: ${FUSION_TRUSTED_PROXIES:-172.16.0.0/12}
       AI_ENABLED: ${AI_ENABLED:-true}
       AI_PROVIDER: ${AI_PROVIDER:-openai}
       AI_BASE_URL: ${AI_BASE_URL:-https://api.openai.com/v1}
@@ -41,11 +42,29 @@ services:
       retries: 5
       start_period: 10s
 
+  caddy:
+    image: caddy:2-alpine
+    container_name: news-panel-caddy
+    restart: unless-stopped
+    depends_on:
+      news-panel:
+        condition: service_healthy
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    environment:
+      CADDY_DOMAIN: ${CADDY_DOMAIN:-:80}
+
   x-twifork:
     build:
       context: ../plugins/x-twifork
       dockerfile: Dockerfile
-    image: news-panel-x-twifork:local
+    image: ${TWIFORK_IMAGE:-news-panel-x-twifork}:${TWIFORK_TAG:-local}
     container_name: news-panel-x-twifork
     restart: unless-stopped
     depends_on:
@@ -64,3 +83,5 @@ services:
 volumes:
   news-panel-data:
   x-twifork-data:
+  caddy-data:
+  caddy-config:
