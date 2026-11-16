@@ -232,6 +232,8 @@ func TestUnwrapCLIOutput(t *testing.T) {
 		{"result string", `{"result":"` + strings.ReplaceAll(triage, `"`, `\"`) + `"}`, triage},
 		{"content string", `{"content":"` + strings.ReplaceAll(triage, `"`, `\"`) + `"}`, triage},
 		{"message content array", `{"message":{"content":[{"type":"text","text":"` + strings.ReplaceAll(triage, `"`, `\"`) + `"}]}}`, triage},
+		{"codebuddy json array result", `[{"type":"message","role":"user","content":[{"type":"input_text","text":"prompt"}]},{"type":"reasoning"},{"type":"message","role":"assistant","content":[{"type":"text","text":"` + strings.ReplaceAll(triage, `"`, `\"`) + `"}]},{"type":"result","subtype":"success","result":"` + strings.ReplaceAll(triage, `"`, `\"`) + `"}]`, triage},
+		{"codebuddy json array ignores user-only", `[{"type":"message","role":"user","content":[{"type":"input_text","text":"prompt"}]}]`, `[{"type":"message","role":"user","content":[{"type":"input_text","text":"prompt"}]}]`},
 		{"plain text", "just text", "just text"},
 	}
 	for _, tc := range cases {

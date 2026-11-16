@@ -80,6 +80,9 @@ func unwrapCLIOutput(out string) string {
 	if s, ok := wrapperText(trimmed); ok {
 		return s
 	}
+	if s, ok := arrayWrapperText(trimmed); ok {
+		return s
+	}
 	lines := strings.Split(trimmed, "\n")
 	for i := len(lines) - 1; i >= 0; i-- {
 		if s, ok := wrapperText(strings.TrimSpace(lines[i])); ok {
@@ -87,6 +90,25 @@ func unwrapCLIOutput(out string) string {
 		}
 	}
 	return trimmed
+}
+
+func arrayWrapperText(s string) (string, bool) {
+	if !strings.HasPrefix(s, "[") {
+		return "", false
+	}
+	var items []map[string]any
+	if json.Unmarshal([]byte(s), &items) != nil {
+		return "", false
+	}
+	for i := len(items) - 1; i >= 0; i-- {
+		if role, _ := items[i]["role"].(string); strings.EqualFold(role, "user") {
+			continue
+		}
+		if s, ok := extractMapText(items[i]); ok {
+			return s, true
+		}
+	}
+	return "", false
 }
 
 func wrapperText(s string) (string, bool) {
@@ -97,6 +119,10 @@ func wrapperText(s string) (string, bool) {
 	if json.Unmarshal([]byte(s), &m) != nil {
 		return "", false
 	}
+	return extractMapText(m)
+}
+
+func extractMapText(m map[string]any) (string, bool) {
 	for _, key := range []string{"result", "content", "message", "text"} {
 		if v, ok := m[key]; ok {
 			if s, ok := cliText(v); ok {
