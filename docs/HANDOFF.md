@@ -7,8 +7,8 @@
 ## 1. 当前项目快照
 
 - **当前所处阶段**：**Phase 1（v0.1 X 纵向切片开发 —— Gate 0 已于 2026-11-15 正式批准）**
-- **代码仓库现状**：核心底座 `P1-01` 已合入 `main`（Go 后端在 WSL Linux 已复验通过，`Dockerfile` 镜像与完整 SPA 联调待上云/开 Docker 后验收，暂留 `IN_REVIEW`）；外置 X 采集插件 `P1-02`（`DONE`）与内置 L1+L2 AI 分拣管线 `P1-03`（通道 A / Qoder，`DONE`）均已合并至 `main`，已具备上云 Docker Compose 实测 `X 采集 + AI 筛选` 条件。
-- **协同与派发策略**：**ZCode 额度已耗尽，通道 A 改由 Qoder 文档接力**；当前 `P1-01` + `P1-02` + `P1-03` 核心主链已齐备，下一步优先通知用户通过 Netcatty 连接测试云服务器（建议先用全空美国 GCP Docker 编排首测），跑通后推进 `P1-04` 增强面板或直接对接 Gate 1 验收。
+- **代码仓库现状**：v0.1 纵向切片核心主链 `P1-01`、`P1-02`、`P1-03` 均已完成并合入 `main`（状态均为 `DONE`），且已新增 `deploy/`（`docker-compose.yml`、`Dockerfile.cli`、`.env.example`、`x-twifork.test.yaml`）并在美国 `gcp-e2-west`（1C1G `e2-micro` + 4Gi Swap）完成云端 Docker Compose 端到端实测（20 条真实 X 推文采集、`/api/v1/ingest` 与 `/api/v1/heartbeat` `200 OK`、CodeBuddy CLI L2 中文打标评分摘要、`news-panel` 空闲内存 `33.12 MiB`）。
+- **协同与派发策略**：**ZCode 额度已耗尽，通道 A 由 Qoder 接力**；v0.1 Docker Compose 纵向切片主链已跑通，当前处于 **Gate 1 验收前夕**：请用户通过 SSH 隧道（`127.0.0.1:8080`）验收界面与筛选质量，决策日常是否切回标准 `AI_PROVIDER=openai`（及轻量 Alpine `Dockerfile`），随后拍板 Gate 1 并派发 `P1-04` 增强面板或 Phase 2 扩展。
 
 ---
 
@@ -52,7 +52,7 @@
 ### Next Human Gate：Gate 1（Phase 1 v0.1 验收门禁）
 - [x] 完成 [tasks/P1-02-x-source-plugin.md](../tasks/P1-02-x-source-plugin.md)（通道 A / ZCode，`DONE`）
 - [x] 完成 [tasks/P1-03-ai-triage-pipeline.md](../tasks/P1-03-ai-triage-pipeline.md)（通道 A / Qoder，`DONE`）
-- [ ] 完成 [tasks/P1-01-core-fusion-base.md](../tasks/P1-01-core-fusion-base.md) 容器镜像复验并在云服务器完成 `X 采集 + AI 筛选` 端到端 Docker 联调跑通
+- [x] 完成 [tasks/P1-01-core-fusion-base.md](../tasks/P1-01-core-fusion-base.md) 容器镜像复验并在云服务器完成 `X 采集 + AI 筛选` 端到端 Docker 联调跑通（`DONE`，已于 `gcp-e2-west` 实测通过；注：1G `e2-micro` 突发型 CPU 上连续 Node CLI 冷启动会触发 CPU 节流，常驻建议切 `AI_PROVIDER=openai`）
 - [ ] 用户验收 v0.1 X 实时数据流去噪/评分效果与容器内存占用
 - [ ] 用户拍板冻结正式 **v1 插件规范**（含外置 Processor Webhook 钩子）及 Phase 2 多信源排期（`DEC-006`、`DEC-007`）
 

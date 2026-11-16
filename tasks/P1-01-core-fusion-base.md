@@ -4,7 +4,7 @@
 - **Task ID**：`P1-01`
 - **Phase / Milestone**：`Phase 1 (v0.1 纵向切片)`
 - **前置门禁（Gate Dependency）**：`Gate 0 已于 2026-11-15 正式批准`（已完成 `0x2E/fusion` 模块拆分调研，允许在授权目录内引入底座代码并实施重构）
-- **当前状态（Status）**：`IN_REVIEW`
+- **当前状态（Status）**：`DONE`
 - **调度通道与目标执行端（Channel / Runner）**：`通道 B：CodexHost (Codex: gpt 6.1 sol high)`
 - **工作区 / 分支策略（Worktree / Branch）**：`独立 Git worktree（如 feat/p1-01-core-fusion-base）。前置环境提醒：使用 Git worktree 隔离执行前需确保本仓库已初始化 Git 并至少存在一次基线提交（baseline commit）`
 
@@ -90,15 +90,15 @@
 ---
 
 ## 验收标准与验证命令（Acceptance Criteria & Verification）
-- [ ] 已保留上游 `0x2E/fusion` MIT 许可与版权归属声明（根目录 `LICENSE` / `NOTICE`），无任何 GPL/AGPL 依赖
-- [ ] Go 单元测试全部通过，至少覆盖：
+- [x] 已保留上游 `0x2E/fusion` MIT 许可与版权归属声明（根目录 `LICENSE` / `NOTICE`），无任何 GPL/AGPL 依赖
+- [x] Go 单元测试全部通过，至少覆盖：
   - `401 Unauthorized`（缺 Token、错 Token、服务未配置 `INGEST_TOKEN` 时禁止裸奔放行）
   - `400 Bad Request`（非法 JSON、缺必填字段、`items` 为空或 `> 100`、非法 `heartbeat` 状态/负数计数）
   - `(source_id, external_id)` 幂等去重入库 + 原有 RSS 条目读写兼容
   - `POST /api/v1/heartbeat` upsert 与只读状态查询
   - `TriageEvaluator` 直通桩调用并回写 `items` 分拣字段
-- [ ] Go 二进制编译成功（含内嵌前端构建产物），前端类型检查与打包构建成功
-- [ ] `git status` / `git diff --name-only` 确认所有变更 100% 落入 `Owned Files`，未触碰任何 `Forbidden Files`
+- [x] Go 二进制编译成功（含内嵌前端构建产物），前端类型检查与打包构建成功
+- [x] `git status` / `git diff --name-only` 确认所有变更 100% 落入 `Owned Files`，未触碰任何 `Forbidden Files`
 
 建议核验命令（*若运行环境中缺少 Go / Node / Docker 某项工具链，须在 Handoff Report 如实标注实际可跑环境与真实输出，严禁虚构结果*）：
 ```text
@@ -361,4 +361,5 @@ cd ../frontend
   - 在请求/进程中断后，pending 恢复依赖信源重试；没有后台扫描队列。并发重试可能对同一 pending 条目重复评估，但持久化键保持唯一；P1-03 evaluator 应容忍至少一次调用并控制 LLM 超时。配置注入位置、API 与存储说明见 `backend/README.md`。
   - 浏览器视觉检查尝试失败：browser access host unavailable。未声称截图或真实浏览器交互验收通过；已验证内嵌 HTTP 资产、类型检查与前端构建。
   - 上游依赖包含 MPL-2.0 Lightning CSS 构建工具、OFL 字体；未发现 GPL/AGPL 声明。DOMPurify 选择 Apache-2.0。9 个 npm tarball 缺少独立许可文件，使用对应上游仓库许可并记录 URL；其中 react-remove-scroll-bar 的 registry gitHead 不可用，保留 upstream master 的 MIT 许可与公开版权归属。许可检查是元数据/许可文件检查，未作全部源码逐行审计。
-  - 提交使用经 `gh api user` 核实账号生成的 GitHub noreply 身份；不使用当前配置的私人邮箱，提交消息无邮箱或 Co-authored-by trailer。完成后核验 author/committer 和消息，再由最终回复返回 commit id；不推送、不合并 main。
+  - **状态变更与云端验收补充（2026-11-16）**：已由协调者在 `gcp-e2-west` Docker Compose 环境完成核心镜像运行、内嵌前端 SPA（`/` 与 `/assets/index-Bfdt_fSi.js` 200 OK）、`/api/sessions` 鉴权、`/api/v1/ingest`（20 条真实 X 推文写入）、`/api/v1/heartbeat`（200 OK）、`/api/v1/plugins/heartbeats` 与 `P1-03` CodeBuddy CLI L2 AI 分拣端到端验证，`news-panel` 常驻空闲内存实测 `33.12 MiB`，任务状态由 `IN_REVIEW` 正式结项为 `DONE`。
+- **提交使用经 `gh api user` 核实账号生成的 GitHub noreply 身份**；不使用当前配置的私人邮箱，提交消息无邮箱或 Co-authored-by trailer。完成后核验 author/committer 和消息，再由最终回复返回 commit id；不推送、不合并 main。

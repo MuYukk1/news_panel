@@ -9,7 +9,7 @@ log_level: INFO
 core:
   base_url: http://news-panel:8080
   token: ${NEWS_PANEL_INGEST_TOKEN}
-  timeout_seconds: 90
+  timeout_seconds: 360
   ingest_max_retries: 3
 
 cookies:
