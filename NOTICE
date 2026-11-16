@@ -1,0 +1,32 @@
+news_panel
+
+Derived from 0x2E/fusion v1.3.0, MIT License.
+https://github.com/0x2E/fusion
+Upstream commit: e90198ae06d03d5820d97c126c161d411fa24313
+Copyright (c) 2024 Rook1e
+The complete upstream MIT grant and copyright are retained in LICENSE.
+Modifications: Copyright (c) 2026 news_panel contributors, MIT.
+
+The core Go module is news_panel. cmd/fusion and FUSION_* configuration names
+remain compatible with upstream deployments. Plugin writes require INGEST_TOKEN
+independently of the upstream reader session/password configuration.
+
+Third-party dependencies retain their own licenses. Go module license metadata
+was checked for the 47 modules in go.mod; npm license metadata was checked for
+all 621 versions in pnpm-lock.yaml. No declared GPL/AGPL license was found.
+This is a manifest/registry audit, not a source-level legal certification.
+
+Notable non-MIT/BSD/Apache metadata in the upstream frontend toolchain:
+- Lightning CSS and its platform build packages: MPL-2.0 (build tooling).
+- DOMPurify: Apache-2.0 OR MPL-2.0; news_panel elects Apache-2.0.
+- Geist, Geist Mono, Inter variable fonts: SIL Open Font License 1.1.
+- caniuse-lite browser data: CC-BY-4.0.
+Retain applicable package licenses and notices when redistributing dependencies.
+Font licenses are copied into the SPA under /licenses/ for binary distribution.
+
+Collected license texts for 47 Go modules and 103 production npm package entries
+are provided in backend/THIRD_PARTY_NOTICES.txt and copied into the container at
+/usr/share/licenses/news_panel/THIRD_PARTY_NOTICES.txt. Packages whose tarballs
+omit license text use their upstream repository license (the source URL is
+recorded; react-remove-scroll-bar uses upstream master because its registry
+gitHead is unavailable).

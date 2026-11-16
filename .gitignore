@@ -1,14 +1,17 @@
 # OS / Editor
-.DS_Store
+.DS_*
 Thumbs.db
 .vscode/
 .idea/
+.claude
 
 # Env / Secrets / Local Runtime Data
 .env
-.env.*
+.env*
+*.env
 !.env.example
 *.db
+*.db-*
 *.sqlite
 *.sqlite3
 data/
@@ -22,17 +25,24 @@ __pycache__/
 .venv/
 venv/
 
-# Node / Frontend
+# Node / Frontend / Build
 node_modules/
+tmp/
+build/
+dist/
 frontend/dist/
-backend/internal/web/dist/
+backend/internal/web/dist/*
+!backend/internal/web/dist/
+!backend/internal/web/dist/.keep
 
-# Go binaries
+# Go binaries / Verification artifacts
 /fusion
 /news_panel
 *.exe
 *.test
 coverage.out
+backend/.tools/
+backend/.verify/
 
 # Worktrees
 .worktrees/
