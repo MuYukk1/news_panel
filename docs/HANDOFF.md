@@ -7,8 +7,8 @@
 ## 1. 当前项目快照
 
 - **当前所处阶段**：**Phase 1（v0.1 X 纵向切片开发 —— Gate 0 已于 2026-11-15 正式批准）**
-- **代码仓库现状**：已完成全部基线文档（含 [PLUGIN_SPEC.md](./PLUGIN_SPEC.md)）与跨工具交接体系（`AGENTS.md`、`tasks/`）；首个独立 ZCode 任务卡 [tasks/P1-02-x-source-plugin.md](../tasks/P1-02-x-source-plugin.md) 已创建为 `TODO`，核心源码与插件代码待各任务执行端按卡创建。
-- **协同与派发策略**：**ZCode 额度充足且偏向拆分简单、边界干净的独立任务**（如 `P1-02` 外置 X 插件及后续独立小模块）；核心底座重构任务（`P1-01`）正在等待对 `0x2E/fusion` 目录结构的详细拆分调研后正式建卡。
+- **代码仓库现状**：核心底座重构 `P1-01` 已合入 `main`（commit `20c1a8e`，`IN_REVIEW`，待 Linux 环境补跑合入后复验）；外置 X 采集插件 `P1-02`（`plugins/x-twifork/`）已通过 WSL Debian 独立复验并标记 `DONE`；核心 AI 分拣管线任务卡 [tasks/P1-03-ai-triage-pipeline.md](../tasks/P1-03-ai-triage-pipeline.md) 已创建为 `TODO`。
+- **协同与派发策略**：**ZCode 额度已耗尽，通道 A 改由 Qoder 文档接力**，当前优先由 **Qoder** 认领 `P1-03`（`backend/internal/ai/**` + `backend/cmd/fusion/main.go` 最小接入）；完成后即可串联 `x-twifork -> Go Core (L1+L2 AI) -> SQLite/前端` 上云实测 `X 采集 + AI 筛选`（`P1-04` 情报分栏增强面板可在实测并行或之后拆分）。
 
 ---
 
@@ -50,7 +50,8 @@
 - [x] **DEC-005**：确定 v0.1 外置 X 插件采用纯 HTTP Python + `twifork[impersonate]` + 用户备用号 Cookie
 
 ### Next Human Gate：Gate 1（Phase 1 v0.1 验收门禁）
-- [ ] 完成 [tasks/P1-02-x-source-plugin.md](../tasks/P1-02-x-source-plugin.md)（通道 A / ZCode）与核心底座改造任务（`P1-01`）并端到端联调跑通
+- [x] 完成 [tasks/P1-02-x-source-plugin.md](../tasks/P1-02-x-source-plugin.md)（通道 A / ZCode，`DONE`）
+- [ ] 完成 [tasks/P1-01-core-fusion-base.md](../tasks/P1-01-core-fusion-base.md)（已合入 `main`，待 Linux 环境复验标 `DONE`）与 [tasks/P1-03-ai-triage-pipeline.md](../tasks/P1-03-ai-triage-pipeline.md)（通道 A / Qoder，`TODO`）并在测试服务器完成端到端联调跑通
 - [ ] 用户验收 v0.1 X 实时数据流去噪/评分效果与容器内存占用
 - [ ] 用户拍板冻结正式 **v1 插件规范**（含外置 Processor Webhook 钩子）及 Phase 2 多信源排期（`DEC-006`、`DEC-007`）
 
