@@ -7,8 +7,8 @@
 ## 1. 当前项目快照
 
 - **当前所处阶段**：**Phase 1（v0.1 X 纵向切片开发 —— Gate 0 已于 2026-11-15 正式批准）**
-- **代码仓库现状**：核心底座重构 `P1-01` 已合入 `main`（commit `20c1a8e`，`IN_REVIEW`，待 Linux 环境补跑合入后复验）；外置 X 采集插件 `P1-02`（`plugins/x-twifork/`）已通过 WSL Debian 独立复验并标记 `DONE`；核心 AI 分拣管线任务卡 [tasks/P1-03-ai-triage-pipeline.md](../tasks/P1-03-ai-triage-pipeline.md) 已创建为 `TODO`。
-- **协同与派发策略**：**ZCode 额度已耗尽，通道 A 改由 Qoder 文档接力**，当前优先由 **Qoder** 认领 `P1-03`（`backend/internal/ai/**` + `backend/cmd/fusion/main.go` 最小接入）；完成后即可串联 `x-twifork -> Go Core (L1+L2 AI) -> SQLite/前端` 上云实测 `X 采集 + AI 筛选`（`P1-04` 情报分栏增强面板可在实测并行或之后拆分）。
+- **代码仓库现状**：核心底座 `P1-01` 已合入 `main`（Go 后端在 WSL Linux 已复验通过，`Dockerfile` 镜像与完整 SPA 联调待上云/开 Docker 后验收，暂留 `IN_REVIEW`）；外置 X 采集插件 `P1-02`（`DONE`）与内置 L1+L2 AI 分拣管线 `P1-03`（通道 A / Qoder，`DONE`）均已合并至 `main`，已具备上云 Docker Compose 实测 `X 采集 + AI 筛选` 条件。
+- **协同与派发策略**：**ZCode 额度已耗尽，通道 A 改由 Qoder 文档接力**；当前 `P1-01` + `P1-02` + `P1-03` 核心主链已齐备，下一步优先通知用户通过 Netcatty 连接测试云服务器（建议先用全空美国 GCP Docker 编排首测），跑通后推进 `P1-04` 增强面板或直接对接 Gate 1 验收。
 
 ---
 
@@ -51,7 +51,8 @@
 
 ### Next Human Gate：Gate 1（Phase 1 v0.1 验收门禁）
 - [x] 完成 [tasks/P1-02-x-source-plugin.md](../tasks/P1-02-x-source-plugin.md)（通道 A / ZCode，`DONE`）
-- [ ] 完成 [tasks/P1-01-core-fusion-base.md](../tasks/P1-01-core-fusion-base.md)（已合入 `main`，待 Linux 环境复验标 `DONE`）与 [tasks/P1-03-ai-triage-pipeline.md](../tasks/P1-03-ai-triage-pipeline.md)（通道 A / Qoder，`TODO`）并在测试服务器完成端到端联调跑通
+- [x] 完成 [tasks/P1-03-ai-triage-pipeline.md](../tasks/P1-03-ai-triage-pipeline.md)（通道 A / Qoder，`DONE`）
+- [ ] 完成 [tasks/P1-01-core-fusion-base.md](../tasks/P1-01-core-fusion-base.md) 容器镜像复验并在云服务器完成 `X 采集 + AI 筛选` 端到端 Docker 联调跑通
 - [ ] 用户验收 v0.1 X 实时数据流去噪/评分效果与容器内存占用
 - [ ] 用户拍板冻结正式 **v1 插件规范**（含外置 Processor Webhook 钩子）及 Phase 2 多信源排期（`DEC-006`、`DEC-007`）
 

@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"news_panel/internal/ai"
 	"news_panel/internal/config"
 	"news_panel/internal/handler"
 	"news_panel/internal/pull"
@@ -42,7 +43,7 @@ func run() error {
 	defer st.Close()
 
 	puller := pull.New(st, cfg)
-	h, err := handler.New(st, cfg, puller)
+	h, err := handler.New(st, cfg, puller, ai.NewFromEnv())
 	if err != nil {
 		return err
 	}
@@ -54,7 +55,7 @@ func run() error {
 		Handler:           r,
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       15 * time.Second,
-		WriteTimeout:      30 * time.Second,
+		WriteTimeout:      ai.HTTPWriteTimeout(),
 		IdleTimeout:       60 * time.Second,
 	}
 

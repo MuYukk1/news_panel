@@ -10,6 +10,8 @@ Thumbs.db
 .env*
 *.env
 !.env.example
+secret/
+secrets/
 *.db
 *.db-*
 *.sqlite
