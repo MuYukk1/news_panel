@@ -41,8 +41,8 @@ func New(cfg Config, logger *slog.Logger) *Evaluator {
 		if cfg.CLICommand == "" {
 			logger.Warn("AI_PROVIDER=cli but AI_CLI_COMMAND is empty; degrading to L1-only")
 		} else {
-			e.provider = NewCLIProvider(cfg.CLICommand, cfg.CLIArgs, cfg.Timeout)
-			logger.Info("ai L2 provider enabled", "provider", "cli", "command", cfg.CLICommand)
+			e.provider = NewCLIProvider(cfg.CLICommand, cfg.CLIArgs, cfg.Timeout, cfg.CLICooldown)
+			logger.Info("ai L2 provider enabled", "provider", "cli", "command", cfg.CLICommand, "cooldown", cfg.CLICooldown)
 		}
 	default: // openai
 		if cfg.APIKey == "" {
@@ -114,8 +114,12 @@ func (e *Evaluator) prompts(in triage.Input, l1 triage.Result) (string, string) 
 用户自定义关注主题：%s
 
 评估每条输入的相关性、时效性、可操作性与信息密度，严格只输出一个 JSON 对象，不要输出任何解释、前后缀或代码围栏：
-{"domain":"investing|ai|deals|other","score":0-100,"tags":["最多6个短标签"],"summary":"一句话高密度中文摘要","priority":"critical|high|normal|low","keep":true|false}
-裁定规则：score>=%d 且确有情报价值才 keep=true；水帖、互粉、抽奖引流、纯广告、无信息情绪帖一律 keep=false 且 score 给低分。突发重大催化剂可给 priority=critical/high。summary 必须是中文一句话。`,
+{"domain":"investing|ai|deals|other","score":0-100,"tags":["最多6个短标签"],"summary":"中文高密度摘要与核心译文","priority":"critical|high|normal|low","keep":true|false}
+裁定规则：
+1. score>=%d 且确有实质情报价值才 keep=true；
+2. 凡 VPS/主机/机场/代理节点卖货广告、推广返佣、课程带货、互粉引流、纯抽奖水帖、无信息情绪吐槽或无上下文的 @他人闲聊回复，一律 keep=false 且 score<=20；
+3. 突发重大催化剂可给 priority=critical/high；
+4. summary 必须用自然准确的中文：若原文为英文等外语，请完整提炼并翻译核心事实、关键数值与结论（保留专有名词）；中文原文则精炼核心信息。`,
 		e.cfg.Topics, e.cfg.KeepMinScore)
 
 	var user strings.Builder

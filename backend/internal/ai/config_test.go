@@ -20,7 +20,7 @@ func clearAIEnv(t *testing.T) {
 		"AI_ENABLED", "AI_PROVIDER", "AI_BASE_URL", "AI_API_KEY", "AI_MODEL", "AI_TOPICS",
 		"AI_KEEP_MIN_SCORE", "AI_TIMEOUT_SECONDS", "AI_FALLBACK_MODE", "AI_OPENAI_JSON_FORMAT",
 		"AI_L1_MIN_CONTENT_RUNES", "AI_L1_FILTER_RETWEETS", "AI_L1_BLOCK_KEYWORDS",
-		"AI_L1_ALLOW_KEYWORDS", "AI_CLI_COMMAND", "AI_CLI_ARGS", "AI_HTTP_WRITE_TIMEOUT_SECONDS",
+		"AI_L1_ALLOW_KEYWORDS", "AI_CLI_COMMAND", "AI_CLI_ARGS", "AI_CLI_COOLDOWN_SECONDS", "AI_HTTP_WRITE_TIMEOUT_SECONDS",
 	} {
 		t.Setenv(k, "")
 	}
@@ -172,6 +172,20 @@ func TestHTTPWriteTimeout(t *testing.T) {
 	t.Setenv("AI_HTTP_WRITE_TIMEOUT_SECONDS", "0")
 	if got := HTTPWriteTimeout(); got != 120*time.Second {
 		t.Errorf("zero write timeout should default: got %v", got)
+	}
+}
+
+func TestCLICooldownParsing(t *testing.T) {
+	clearAIEnv(t)
+	t.Setenv("AI_CLI_COOLDOWN_SECONDS", "15")
+	cfg := ConfigFromEnv(discardLogger())
+	if cfg.CLICooldown != 15*time.Second {
+		t.Errorf("cooldown=%v want 15s", cfg.CLICooldown)
+	}
+	t.Setenv("AI_CLI_COOLDOWN_SECONDS", "-5")
+	cfg = ConfigFromEnv(discardLogger())
+	if cfg.CLICooldown != 0 {
+		t.Errorf("negative cooldown should clamp/ignore to 0, got %v", cfg.CLICooldown)
 	}
 }
 

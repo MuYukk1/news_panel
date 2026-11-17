@@ -133,7 +133,7 @@ func normalizeVerdict(v verdict, l1 triage.Result, keepMinScore int) triage.Resu
 	if summary == "" {
 		summary = l1.AISummary
 	}
-	summary = truncateRunes(summary, 200)
+	summary = truncateRunes(summary, 500)
 
 	keep := score >= keepMinScore
 	if v.Keep != nil {

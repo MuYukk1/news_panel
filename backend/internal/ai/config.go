@@ -40,6 +40,7 @@ type Config struct {
 	L1AllowKeywords   []string
 	CLICommand        string
 	CLIArgs           []string
+	CLICooldown       time.Duration
 }
 
 // ConfigFromEnv reads AI_* variables from the process environment only.
@@ -97,6 +98,13 @@ func ConfigFromEnv(logger *slog.Logger) Config {
 			cfg.Timeout = time.Duration(n) * time.Second
 		} else {
 			logger.Warn("invalid AI_TIMEOUT_SECONDS; using default", "value", raw, "default", defaultTimeoutSeconds)
+		}
+	}
+	if raw := strings.TrimSpace(os.Getenv("AI_CLI_COOLDOWN_SECONDS")); raw != "" {
+		if n, err := strconv.Atoi(raw); err == nil && n >= 0 {
+			cfg.CLICooldown = time.Duration(n) * time.Second
+		} else {
+			logger.Warn("invalid AI_CLI_COOLDOWN_SECONDS; using 0", "value", raw)
 		}
 	}
 	if raw := strings.TrimSpace(os.Getenv("AI_L1_MIN_CONTENT_RUNES")); raw != "" {

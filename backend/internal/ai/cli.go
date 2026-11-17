@@ -16,14 +16,20 @@ import (
 // VPS never spawns concurrent model processes, and every call is bounded by
 // AI_TIMEOUT_SECONDS via exec.CommandContext.
 type CLIProvider struct {
-	command string
-	args    []string
-	timeout time.Duration
-	mu      sync.Mutex
+	command         string
+	args            []string
+	timeout         time.Duration
+	cooldown        time.Duration
+	lastCompletedAt time.Time
+	mu              sync.Mutex
 }
 
-func NewCLIProvider(command string, args []string, timeout time.Duration) *CLIProvider {
-	return &CLIProvider{command: command, args: args, timeout: timeout}
+func NewCLIProvider(command string, args []string, timeout time.Duration, cooldowns ...time.Duration) *CLIProvider {
+	var cooldown time.Duration
+	if len(cooldowns) > 0 && cooldowns[0] > 0 {
+		cooldown = cooldowns[0]
+	}
+	return &CLIProvider{command: command, args: args, timeout: timeout, cooldown: cooldown}
 }
 
 func (p *CLIProvider) Name() string { return "cli" }
@@ -34,16 +40,29 @@ func (p *CLIProvider) Complete(ctx context.Context, systemPrompt, userPrompt str
 	if err := ctx.Err(); err != nil {
 		return "", err
 	}
-	ctx, cancel := context.WithTimeout(ctx, p.timeout)
+	if p.cooldown > 0 && !p.lastCompletedAt.IsZero() {
+		if wait := p.cooldown - time.Since(p.lastCompletedAt); wait > 0 {
+			timer := time.NewTimer(wait)
+			select {
+			case <-timer.C:
+			case <-ctx.Done():
+				timer.Stop()
+				return "", ctx.Err()
+			}
+		}
+	}
+	defer func() { p.lastCompletedAt = time.Now() }()
+
+	cmdCtx, cancel := context.WithTimeout(ctx, p.timeout)
 	defer cancel()
 
 	prompt := systemPrompt + "\n\n" + userPrompt
-	cmd := exec.CommandContext(ctx, p.command, resolveCLIArgs(p.args, prompt)...)
+	cmd := exec.CommandContext(cmdCtx, p.command, resolveCLIArgs(p.args, prompt)...)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	err := cmd.Run()
-	if ctx.Err() == context.DeadlineExceeded {
+	if cmdCtx.Err() == context.DeadlineExceeded {
 		return "", fmt.Errorf("cli timeout after %s", p.timeout)
 	}
 	if err != nil {

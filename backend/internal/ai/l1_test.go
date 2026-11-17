@@ -41,6 +41,7 @@ func TestL1ShortContentNoise(t *testing.T) {
 		{"short but has title", l1Input("hi", "Breaking: something"), false},
 		{"short but valuable github link", l1Input("see https://github.com/foo/bar/releases", ""), false},
 		{"short social link only", l1Input("look https://t.co/abc", ""), true},
+		{"tco link copied into title", l1Input("https://t.co/sM2huxDbo3", "https://t.co/sM2huxDbo3"), true},
 		{"media-only placeholder", l1Input("(media-only tweet)", ""), true},
 		{"long enough", l1Input("这是一条足够长度的正常内容信息", ""), false},
 	}
@@ -200,6 +201,31 @@ func TestL1KeptSummaryNonEmpty(t *testing.T) {
 	got := r.evaluate(l1Input("OpenAI 发布新模型，值得关注", ""))
 	if strings.TrimSpace(got.AISummary) == "" {
 		t.Errorf("kept L1 result must carry a summary")
+	}
+}
+
+func TestL1AdKeywordsAndXQueryReplies(t *testing.T) {
+	r := defaultL1()
+	ad1 := r.evaluate(l1Input("Mondoze黑五限时优惠：Mac独立服务器, $109/月起，支持OpenAI Codex", "Mondoze黑五限时优惠"))
+	if ad1.TriageStatus != "filtered" || !containsTag(ad1.AITags, "l1-ad") {
+		t.Errorf("hosting promo should filter via l1-ad even with deals words: %+v", ad1)
+	}
+	ad2 := r.evaluate(l1Input("平时二十多块钱的亚太节点，大多只给个几兆小水管和到处乱跳的广播IP。刚看悦阳数据放出的香港优化A款", ""))
+	if ad2.TriageStatus != "filtered" || !containsTag(ad2.AITags, "l1-ad") {
+		t.Errorf("proxy/reseller ad should filter via l1-ad: %+v", ad2)
+	}
+
+	replyIn := l1Input("@lumeroute 更期待DeepSeek，想看看有多猛", "@lumeroute 更期待DeepSeek")
+	replyIn.RawMeta = map[string]any{"origin_key": "query:OpenAI OR DeepSeek"}
+	replyOut := r.evaluate(replyIn)
+	if replyOut.TriageStatus != "filtered" || !containsTag(replyOut.AITags, "l1-reply") {
+		t.Errorf("X query reply should filter via l1-reply: %+v", replyOut)
+	}
+
+	acctIn := l1Input("@someone We just shipped GPT-6 weights in preview!", "")
+	acctIn.RawMeta = map[string]any{"origin_key": "account:@OpenAI"}
+	if got := r.evaluate(acctIn); got.TriageStatus != "kept" {
+		t.Errorf("followed account @reply should not be auto-dropped by query-reply guard: %+v", got)
 	}
 }
 

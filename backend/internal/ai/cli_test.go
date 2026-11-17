@@ -244,3 +244,26 @@ func TestUnwrapCLIOutput(t *testing.T) {
 		})
 	}
 }
+
+func TestCLIProviderCooldown(t *testing.T) {
+	t.Setenv("GO_WANT_HELPER_PROCESS", "1")
+	t.Setenv("AI_TEST_HELPER_MODE", "echo")
+	t.Setenv("AI_TEST_STDOUT", `{"domain":"ai","score":70,"keep":true}`)
+	p := NewCLIProvider(os.Args[0], []string{"-test.run=TestHelperProcess", "--", "{{prompt}}"}, 5*time.Second, 80*time.Millisecond)
+	start := time.Now()
+	if _, err := p.Complete(context.Background(), "s", "u1"); err != nil {
+		t.Fatalf("first Complete: %v", err)
+	}
+	if _, err := p.Complete(context.Background(), "s", "u2"); err != nil {
+		t.Fatalf("second Complete: %v", err)
+	}
+	if elapsed := time.Since(start); elapsed < 75*time.Millisecond {
+		t.Errorf("expected second call to respect cooldown, elapsed=%v", elapsed)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Millisecond)
+	defer cancel()
+	if _, err := p.Complete(ctx, "s", "u3"); err == nil {
+		t.Errorf("expected context deadline during cooldown")
+	}
+}

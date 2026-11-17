@@ -72,6 +72,17 @@ var dealsKeywords = []string{
 	"redeem code", "free trial",
 }
 
+// adKeywords identify commercial promos, IDC/VPS reseller pitches, airport/proxy
+// ads and affiliate shills; unlike softer engagement-bait words, they are not
+// exempted by dealsKeywords.
+var adKeywords = []string{
+	"独立服务器", "独享ip", "双isp", "住宅ip", "家宽", "广播ip", "原生ip", "落地机",
+	"专线机场", "机场节点", "高速节点", "三网优化", "cn2 gia", "cn2gia", "月起", "/月起",
+	"元/月", "月付", "年付", "欢迎选购", "下单链接", "购买链接", "发卡网", "代充",
+	"aff", "aff链接", "邀请返佣", "推广链接", "返佣链接", "商务合作", "广告投放", "tg频道",
+	"sponsored", "#ad", "paid promotion", "referral link", "affiliate link",
+}
+
 // noiseKeywords are typical zero-information spam / engagement-bait / ads.
 // They are skipped whenever a deals signal is present (unless the user set an
 // explicit custom block keyword or an allow keyword overrides everything).
@@ -143,6 +154,7 @@ type l1Rules struct {
 	filterRetweets bool
 	allow          []keywordMatcher
 	block          []keywordMatcher
+	ad             []keywordMatcher
 	noise          []keywordMatcher
 	deals          []keywordMatcher
 	investing      []keywordMatcher
@@ -165,6 +177,7 @@ func newL1Rules(cfg Config) *l1Rules {
 		filterRetweets: cfg.L1FilterRetweets,
 		allow:          compile(cfg.L1AllowKeywords),
 		block:          compile(cfg.L1BlockKeywords),
+		ad:             compile(adKeywords),
 		noise:          compile(noiseKeywords),
 		deals:          compile(dealsKeywords),
 		investing:      compile(investingKeywords),
@@ -211,12 +224,18 @@ func (r *l1Rules) evaluate(in triage.Input) triage.Result {
 	if r.filterRetweets && isRetweet(in.RawMeta) {
 		return noiseResult("l1-retweet", "L1 过滤：转推内容（AI_L1_FILTER_RETWEETS=true）")
 	}
+	if hit := firstMatch(r.ad, text); hit != "" {
+		return noiseResult("l1-ad", "L1 过滤：命中推广/卖货广告特征「"+hit+"」")
+	}
+	if isSearchReplyChatter(in) {
+		return noiseResult("l1-reply", "L1 过滤：X 检索中的 @对话回复水帖")
+	}
 	if !anyMatch(r.deals, text) {
 		if hit := firstMatch(r.noise, text); hit != "" {
 			return noiseResult("l1-noise-keyword", "L1 过滤：命中噪声关键词「"+hit+"」")
 		}
 	}
-	if r.minRunes > 0 && effectiveRunes(in.Content) < r.minRunes && strings.TrimSpace(in.Title) == "" && !hasValuableLink(in) {
+	if r.minRunes > 0 && effectiveRunes(in.Content) < r.minRunes && effectiveRunes(in.Title) == 0 && !hasValuableLink(in) {
 		return noiseResult("l1-short", "L1 过滤：正文有效信息过短")
 	}
 
@@ -299,6 +318,18 @@ func hasValuableLink(in triage.Input) bool {
 		}
 	}
 	return false
+}
+
+func isSearchReplyChatter(in triage.Input) bool {
+	if strings.ToLower(strings.TrimSpace(in.SourceType)) != "x" {
+		return false
+	}
+	trimmed := strings.TrimSpace(in.Content)
+	if !strings.HasPrefix(trimmed, "@") {
+		return false
+	}
+	origin, _ := in.RawMeta["origin_key"].(string)
+	return strings.HasPrefix(origin, "query:")
 }
 
 func isRetweet(meta map[string]any) bool {

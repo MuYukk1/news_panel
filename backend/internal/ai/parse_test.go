@@ -166,8 +166,13 @@ func TestNormalizeVerdictSummaryFallback(t *testing.T) {
 	if got.AISummary != "L1 兜底摘要" {
 		t.Errorf("empty summary should fall back to L1: %q", got.AISummary)
 	}
-	got = normalizeVerdict(verdict{Domain: "ai", Score: &s, Summary: strings.Repeat("摘", 300)}, l1Base(), 45)
-	if len([]rune(got.AISummary)) > 201 {
-		t.Errorf("summary must truncate to ~200 runes")
+	got = normalizeVerdict(verdict{Domain: "ai", Score: &s, Summary: strings.Repeat("摘", 600)}, l1Base(), 45)
+	if len([]rune(got.AISummary)) > 501 {
+		t.Errorf("summary must truncate to ~500 runes, got %d", len([]rune(got.AISummary)))
+	}
+	threeHundred := strings.Repeat("摘", 300)
+	got = normalizeVerdict(verdict{Domain: "ai", Score: &s, Summary: threeHundred}, l1Base(), 45)
+	if got.AISummary != threeHundred {
+		t.Errorf("300-rune translated summary should remain intact")
 	}
 }

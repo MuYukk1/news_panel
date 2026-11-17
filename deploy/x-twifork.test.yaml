@@ -9,7 +9,7 @@ log_level: INFO
 core:
   base_url: http://news-panel:8080
   token: ${NEWS_PANEL_INGEST_TOKEN}
-  timeout_seconds: 360
+  timeout_seconds: 480
   ingest_max_retries: 3
 
 cookies:
@@ -18,17 +18,17 @@ cookies:
   twid: ${X_TWID}
 
 fetch:
-  poll_interval_seconds: 900
-  jitter_seconds: 120
+  poll_interval_seconds: 1800
+  jitter_seconds: 180
   max_delay_seconds: 7200
   quiet_hours: "01:00-08:30"
   quiet_hours_multiplier: 4.0
   timezone: "Asia/Shanghai"
-  max_tweets_per_query: 10
-  max_items_per_batch: 5
+  max_tweets_per_query: 8
+  max_items_per_batch: 3
   search_product: "Latest"
   include_retweets: false
-  first_run_max_items: 5
+  first_run_max_items: 3
   pace_seconds: 3.0
 
 backoff:
@@ -43,8 +43,8 @@ accounts:
   - "@AnthropicAI"
 
 queries:
-  - "OpenAI OR DeepSeek"
-  - "VPS 优惠 OR 限免"
+  - '(OpenAI OR Anthropic OR DeepSeek) (release OR model OR API OR "open source") -giveaway'
+  - '(Bug价 OR 限免 OR 优惠码 OR "free tier") -机场 -节点 -独享IP -返佣'
 
 planner:
   enabled: false
