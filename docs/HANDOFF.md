@@ -7,8 +7,8 @@
 ## 1. 当前项目快照
 
 - **当前所处阶段**：**Phase 1（v0.1 X 纵向切片开发 —— Gate 0 已于 2026-11-15 正式批准）**
-- **代码仓库现状**：v0.1 纵向切片核心主链 `P1-01`、`P1-02`、`P1-03` 均已完成并合入 `main`（状态均为 `DONE`），且已新增 `deploy/`（`docker-compose.yml`、`Dockerfile.cli`、`.env.example`、`x-twifork.test.yaml`）并在美国 `gcp-e2-west`（1C1G `e2-micro` + 4Gi Swap）完成云端 Docker Compose 端到端实测（20 条真实 X 推文采集、`/api/v1/ingest` 与 `/api/v1/heartbeat` `200 OK`、CodeBuddy CLI L2 中文打标评分摘要、`news-panel` 空闲内存 `33.12 MiB`）。
-- **协同与派发策略**：**ZCode 额度已耗尽，通道 A 由 Qoder 接力**；v0.1 Docker Compose 纵向切片主链已跑通，当前处于 **Gate 1 验收前夕**：请用户通过 SSH 隧道（`127.0.0.1:8080`）验收界面与筛选质量，决策日常是否切回标准 `AI_PROVIDER=openai`（及轻量 Alpine `Dockerfile`），随后拍板 Gate 1 并派发 `P1-04` 增强面板或 Phase 2 扩展。
+- **代码仓库现状**：v0.1 纵向切片核心主链 `P1-01`、`P1-02`、`P1-03` 均已完成并合入 `main`（状态均为 `DONE`），已补充 GitHub Actions 公开 GHCR 构建（含不可变 `sha-<short>` 镜像标签）、Caddy 自动 HTTPS 反代、200 GB 月流量守卫 `deploy/traffic-guard.sh`，以及 CodeBuddy CLI 20s 冷却防超时、英文摘要翻译中文与 L1/L2 广告加固（基线提交 `01d3015` / 安全回滚 Tag `baseline-pre-p1-04`）。
+- **协同与派发策略**：当前主控作为 LEAD 已拆出 [tasks/P1-04-high-signal-panel.md](../tasks/P1-04-high-signal-panel.md)（统一浅色磨砂液态玻璃工作台前端重构，**须在独立分支/worktree `feat/p1-04-high-signal-panel` 执行**）；完成后由 LEAD 审查合入并经 GHCR 发布更新，随后进入 **Gate 1 验收**。
 
 ---
 
