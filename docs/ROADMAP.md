@@ -1,7 +1,7 @@
 # `news_panel` 演进路线图（ROADMAP）
 
-> **当前阶段**：**Phase 1（v0.1 纵向切片开发 —— Gate 0 已于 2026-11-15 批准）**  
-> **文档索引**：技术选型结论见 [DECISIONS.md](./DECISIONS.md)，v0.1 最小插件契约见 [PLUGIN_SPEC.md](./PLUGIN_SPEC.md)，跨工具任务见 [tasks/INDEX.md](../tasks/INDEX.md)。
+> **当前阶段**：**Phase 2（v0.2 体验收口、三级处理管线与个性化闭环 —— Gate 1 已于 2026-11-20 批准）**  
+> **文档索引**：技术选型结论见 [DECISIONS.md](./DECISIONS.md)，v1 冻结最小插件契约见 [PLUGIN_SPEC.md](./PLUGIN_SPEC.md)，跨工具任务见 [tasks/INDEX.md](../tasks/INDEX.md)。
 
 ---
 
@@ -40,7 +40,7 @@
 
 ---
 
-## 2. Phase 1（v0.1）：X 端到端纵向切片 Demo（🚧 当前阶段）
+## 2. Phase 1（v0.1）：X 端到端纵向切片 Demo（✅ 已完成 — 2026-11-20）
 
 ### 目标
 用最小工程复杂度在微型 Linux VPS（Docker 环境）上验证 `news_panel` 的核心假设：**AI 前置过滤能否显著提升高噪社交信息流（X）的信噪比**。
@@ -49,36 +49,34 @@
 ```text
 [plugins/x-twifork (twifork+Cookie)] --(POST /api/v1/ingest & heartbeat)--> [Go 核心 L1+L2 AI 管线] --> [SQLite + React 19 面板]
 ```
-- **Source 层（`P1-02`，通道 A / ZCode）**：独立外置插件 `plugins/x-twifork/`（`twifork[impersonate]` + 备用号 Cookie、抗 Cloudflare 拟人抖动调度、`state.json` 增量断点、`--dry-run` 独立自测、可选 AI 规划降级静态配置）。
-- **契约层**：严格落地 [docs/PLUGIN_SPEC.md](./PLUGIN_SPEC.md) 的 `POST /api/v1/ingest`、`POST /api/v1/heartbeat` 与 `items` AI 扩展字段。
-- **Core + Processor + Panel 层（`P1-01` 及可拆分简单子任务）**：改造 `0x2E/fusion` 底座，接入 `/api/v1` 入站接口、内置 L1 规则 + L2 OpenAI-compatible LLM 过滤评分管线，并在 React 19 面板展示评分/标签/摘要/优先级与基础已读状态。
+- **Source 层（`P1-02` + 账号锁定/封禁静默熔断修复 `729e9bc`）**：独立外置插件 `plugins/x-twifork/`。
+- **Core + Processor + Panel 层（`P1-01` / `P1-03` / `P1-04`）**：Go + SQLite + 内嵌 React 19 浅色磨砂液态玻璃工作台（含双时间显示），已完成云端 Docker Compose + Caddy HTTPS 实测上线。
 
-### 🚦 Gate 1（人工拍板门禁）
-并行扩展多信源与多处理插件前，用户必须验收并拍板：
-1. v0.1 端到端真实数据流与 AI 过滤质量达到预期；
-2. 基于 v0.1 实战反馈，正式拍板冻结**通用双层插件契约规范（Plugin Contract v1）**与深度重构计划（防止成为原底座浅层套壳）。
+### 🚦 Gate 1（✅ 已由用户批准 — 2026-11-20）
+用户已完成 v0.1 实战验收并拍板锁定 `DEC-006`、`DEC-007`：
+1. 冻结现行 `/api/v1/ingest` + `/api/v1/heartbeat` 为 v1 稳定契约，当前暂不加外置 Processor Webhook 钩子；
+2. Phase 2 优先收口 UI/RSS 体验痛点（`P2-01`），核心投入「三级 AI 处理管线（`P2-02`）+ 用户反馈与有界个性化档案闭环（`P2-03`）」，新信源聚焦单一 Telegram 插件（`P2-04`）。
 
 ---
 
-## 3. Phase 2（v0.2）：双层插件化完善与多信源扩展
+## 3. Phase 2（v0.2）：体验收口、三级处理管线、个性化档案与 Telegram 接入（🚧 当前阶段）
 
 ### 目标
-在已验证的最小核心与冻结的插件契约之上，借助多 Agent 并行能力扩展异构信源与处理插件，实现多台小 VPS 节点协同部署。
+修复 v0.1 实战暴露的 UI 与 RSS 兼容痛点，构建低开销高精度的三级递进 AI 分拣管线与用户个性化反馈闭环，并验证冻结 v1 契约接入第二个外置信源（Telegram）。
 
-### 候选扩展范围（待 Gate 1 后排期确认）
-- **Source Plugins 扩展**：
-  - Telegram 群组监听器 `[TBD]`
-  - 社区论坛监控（Linux.do / NodeSeek）`[TBD]`
-  - QQ 群机器人采集端 `[TBD]`
-- **Processing Plugins 扩展**：
-  - 跨源语义去重插件 `[TBD]`
-  - 分领域精细评分与打标插件（投资催化 / AI 泄露 / 薅羊毛）`[TBD]`
-  - 优先级路由与高优通知插件 `[TBD]`
-- **多节点与运维**：
-  - 插件跨小规格 VPS 节点解耦部署验证（HTTP/Webhook 安全校验、Docker Compose / 单节点轻量部署规范 `[TBD]`）。
+### 计划任务拆解
+- **`P2-01`（体验与 RSS 兼容收口 — 优先开工）**：
+  - 修复阅读抽屉打开/关闭卡顿与关闭先闪白问题；
+  - 原生 RSS 未打分条目归入独立「未打分」分桶（方案 A：默认不走 AI，预留/落地单源 `ai_enabled` 开关）；
+  - 订阅源与外置插件液态玻璃启停开关；
+  - 高级筛选增加「按来源筛选」；
+  - 多源探测与 OPML 导入升级为多选批量导入（支持直接粘贴 GitHub `.opml` 链接）。
+- **`P2-02`（三级 AI 分拣管线）**：L1 程序规则拦截 → L2 云端轻量 Decision 门控（可插拔 HTTP Adapter，具体模型 `[TBD]`）→ L3 主模型评分/摘要/复核，显著降低主模型调用量。
+- **`P2-03`（用户反馈与有界个性化档案闭环）**：前端修改优先级 + 可选文字反馈 → SQLite 反馈表（关联轻量 `user_id`）→ 空闲窗口周期性压缩归纳为有长度上限的结构化偏好档案（支持查看/手工微调/回滚）→ 注入 L2 与 L3 判定。
+- **`P2-04`（外置 Telegram 信源插件）**：兼容公开频道与个人号监听私有群，复用 v1 `/ingest` + `/heartbeat` 契约，按需评估轻量插件配置界面。
 
 ### 🚦 Gate 2（人工拍板门禁）
-用户验收多信源混合信息流质量、容器资源占用（CPU/RAM）与插件可热插拔性。
+用户验收三级管线降本与准确度、个性化档案演进效果、Telegram 实时接入表现与容器内存占用后，方可进入 Phase 3（Linux.do / NodeSeek / QQ 群与外部高优通知等）。
 
 ---
 

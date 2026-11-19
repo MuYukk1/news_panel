@@ -20,8 +20,8 @@
 ## 2. 不可逾越的全局红线（Anti-Drift Rules）
 
 1. **Human Gate 门禁铁律**
-   - 核对 [docs/HANDOFF.md](./docs/HANDOFF.md) 中的当前门禁状态（**当前：Gate 0 已于 2026-11-15 通过，已进入 Phase 1 / v0.1 纵向切片开发，等待后续 Gate 1 验收**）。
-   - **未过 Gate 禁越界**：任何未解锁阶段的跨期代码（如 Gate 1 前的 Phase 2 多信源扩张）严禁提前编写；仅允许在已拆分的 `tasks/<TASK-ID>.md` 授权 `Owned Files` 范围内编写代码与 `Dockerfile`。
+   - 核对 [docs/HANDOFF.md](./docs/HANDOFF.md) 中的当前门禁状态（**当前：Gate 1 已于 2026-11-20 通过，已进入 Phase 2 / v0.2 开发，等待后续 Gate 2 验收**）。
+   - **未过 Gate 禁越界**：任何未解锁阶段的跨期代码（如 Gate 2 前的 Phase 3 演进项或未拍板的 Linux.do/NodeSeek/QQ 信源）严禁提前编写；仅允许在已拆分的 `tasks/<TASK-ID>.md` 授权 `Owned Files` 范围内编写代码与 `Dockerfile`。
    - **严禁越权锁定 `[TBD]`**：凡在 [docs/DECISIONS.md](./docs/DECISIONS.md) 中标为 `[TBD]` 的技术选型，未经用户明确拍板，任何工具/Agent 不得擅自拍板或写入实现代码。
 2. **Demo-First / Vertical Slice（演示优先）**
    - v0.1 必须先跑通端到端最小闭环：`1 个 X 信源 -> 1 个最小插件契约 -> 1 个 AI 过滤器 -> 在面板中可见`。

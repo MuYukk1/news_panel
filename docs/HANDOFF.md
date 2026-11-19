@@ -6,9 +6,9 @@
 
 ## 1. 当前项目快照
 
-- **当前所处阶段**：**Phase 1（v0.1 X 纵向切片开发 —— Gate 0 已于 2026-11-15 正式批准）**
-- **代码仓库现状**：v0.1 纵向切片全部任务 `P1-01`、`P1-02`、`P1-03`、`P1-04` 均已完成并合入 `main`（状态均为 `DONE`），并已完成 `plugins/x-twifork` 账号锁定/封禁静默熔断修复（`729e9bc`）与前端液态玻璃高信号工作台 + 双时间显示（安全回滚 Tag `baseline-pre-p1-04` / 镜像 `sha-01d3015`）。
-- **协同与派发策略**：`main` 推送将自动触发 GitHub Actions 构建并发布最新 GHCR 镜像；云端 VPS 拉取最新镜像更新 `news-panel`（`x-twifork` 待备用号人工解锁后恢复），随后进入 **Gate 1 验收**。
+- **当前所处阶段**：**Phase 2（v0.2 体验收口、三级处理管线与个性化闭环 —— Gate 1 已于 2026-11-20 正式批准）**
+- **代码仓库现状**：Phase 1（v0.1）全部任务 `P1-01`、`P1-02`（含 `729e9bc` 静默熔断修复）、`P1-03`、`P1-04`（含双时间显示）均已完成并合入 `main`（基线提交 `5925b42`，已于 `gcp-e2-west` 线上部署验证）。
+- **协同与派发策略**：当前主控作为 LEAD 已正式发布 Phase 2 首张任务卡 [tasks/P2-01-ux-rss-source-controls.md](../tasks/P2-01-ux-rss-source-controls.md)（抽屉流畅动画 + RSS 未打分归类 + 订阅源/插件液态玻璃开关 + 来源筛选 + OPML/多源多选批量导入，**须在独立分支/worktree `feat/p2-01-ux-rss-source-controls` 执行**）；后续依次推进 `P2-02`（三级处理管线）、`P2-03`（用户反馈与有界个性化档案）、`P2-04`（Telegram 插件）。
 
 ---
 
@@ -30,9 +30,9 @@
 ## 3. 新会话 / 新 Worker 快速上手清单
 
 1. **按顺序阅读文档**：[AGENTS.md](../AGENTS.md) → `docs/HANDOFF.md` → `docs/DECISIONS.md` → `docs/PRD.md` → `docs/ROADMAP.md` →（涉及接口/插件必读）`docs/PLUGIN_SPEC.md` → `tasks/README.md` 与对应 `tasks/<TASK-ID>.md`。
-2. **核对当前 Gate 与任务边界**：**Gate 0 已于 2026-11-15 批准**，项目已进入 **Phase 1（v0.1）**（注：若 `AGENTS.md` 仍留有早期 Gate 0 提示语，以本文件与 `DECISIONS.md` 为准）。
+2. **核对当前 Gate 与任务边界**：**Gate 0（2026-11-15）与 Gate 1（2026-11-20）均已批准**，项目已进入 **Phase 2（v0.2）**。
    - 执行端按 [tasks/README.md](../tasks/README.md) 领取任务卡（通道 A：ZCode / Qoder / Trae；通道 B：经 CodexHost 调度的 Codex / WorkBuddy / OpenCode / DeepSeek Harness）。
-   - **严守边界**：只修改自己任务卡授权的 `Owned Files`（及独立 Git worktree），围绕 v0.1 纵向切片开发，**Gate 1 前严禁提前扩展 Phase 2 多信源**；结束时必须填妥 `## Handoff Report`。
+   - **严守边界**：只修改自己任务卡授权的 `Owned Files`（及独立 Git worktree），**Gate 2 前严禁擅自扩展未排期信源（Linux.do/NodeSeek/QQ）或重型插件市场 UI**；结束时必须填妥 `## Handoff Report`。
 3. **遵守防跑偏纪律**：
    - Demo-First：`1 个 X 信源 (twifork) -> HTTP 最小契约 -> Go 核心 L1/L2 AI 过滤 -> React 19 面板可见` 优先于一切通用抽象；
    - 协议红线：绝不引入 GPL / AGPL 代码或依赖；
@@ -40,22 +40,22 @@
 
 ---
 
-## 4. 门禁状态与下一步待办（Gate 0 ✅ / Next: Gate 1）
+## 4. 门禁状态与下一步待办（Gate 0 ✅ / Gate 1 ✅ / Next: Gate 2）
 
 ### Gate 0（✅ 已于 2026-11-15 批准）
-- [x] **DEC-001**：确定以 `0x2E/fusion`（MIT）作为深度重构底座（UI 借鉴 `newsnow`/`glance` 思路）
-- [x] **DEC-002**：确定核心栈为 Go + `modernc.org/sqlite` + 内嵌 React 19 SPA
-- [x] **DEC-003**：确定内置 + 外置混合双层插件架构，v0.1 契约冻结于 [PLUGIN_SPEC.md](./PLUGIN_SPEC.md)
-- [x] **DEC-004**：确定 v0.1 AI 管线为内置 L1 规则粗筛 + L2 云端 OpenAI-compatible LLM 评分/打标/摘要
-- [x] **DEC-005**：确定 v0.1 外置 X 插件采用纯 HTTP Python + `twifork[impersonate]` + 用户备用号 Cookie
+- [x] **DEC-001**–**DEC-005**：锁定 `0x2E/fusion` 底座、Go+SQLite+React 19 栈、双层插件最小契约、L1+L2 AI 管线、纯 HTTP `twifork` X 采集。
 
-### Next Human Gate：Gate 1（Phase 1 v0.1 验收门禁）
-- [x] 完成 [tasks/P1-02-x-source-plugin.md](../tasks/P1-02-x-source-plugin.md)（通道 A / ZCode，`DONE`）
-- [x] 完成 [tasks/P1-03-ai-triage-pipeline.md](../tasks/P1-03-ai-triage-pipeline.md)（通道 A / Qoder，`DONE`）
-- [x] 完成 [tasks/P1-01-core-fusion-base.md](../tasks/P1-01-core-fusion-base.md) 容器镜像复验并在云服务器完成 `X 采集 + AI 筛选` 端到端 Docker 联调跑通（`DONE`，已于 `gcp-e2-west` 实测通过；注：1G `e2-micro` 突发型 CPU 上连续 Node CLI 冷启动会触发 CPU 节流，常驻建议切 `AI_PROVIDER=openai`）
-- [x] 完成 [tasks/P1-04-high-signal-panel.md](../tasks/P1-04-high-signal-panel.md)（统一浅色磨砂液态玻璃工作台前端重构 + 双时间显示，`DONE`）
-- [ ] 用户验收 v0.1 X 实时数据流去噪/评分效果与容器内存占用
-- [ ] 用户拍板冻结正式 **v1 插件规范**（含外置 Processor Webhook 钩子）及 Phase 2 多信源排期（`DEC-006`、`DEC-007`）
+### Gate 1（✅ 已于 2026-11-20 批准）
+- [x] 完成 `P1-01`、`P1-02`（含 `AccountLocked`/`AccountSuspended` 静默熔断）、`P1-03`、`P1-04`（含双时间显示）并完成云端实测验收
+- [x] **DEC-006**：冻结现行 `/api/v1/ingest` + `/api/v1/heartbeat` 为 v1 稳定契约，当前版本暂不加外置 Processor Webhook 钩子
+- [x] **DEC-007**：锁定 Phase 2 聚焦「UI/RSS 收口（`P2-01`）→ 三级云端处理管线（`P2-02`）→ 用户优先级反馈与有界个性化档案闭环（`P2-03`）→ Telegram 单一新信源（`P2-04`）」；原生 RSS 采用方案 A（默认「未打分」，单源可选开启 AI 评分）
+
+### Next Human Gate：Gate 2（Phase 2 v0.2 验收门禁）
+- [ ] 完成 [tasks/P2-01-ux-rss-source-controls.md](../tasks/P2-01-ux-rss-source-controls.md)（`TODO`，抽屉流畅动画 + RSS 未打分归类 + 订阅源/插件开关 + 来源筛选 + OPML/多源多选导入）
+- [ ] 拆解并完成 `P2-02`（三级处理管线：L1 → L2 云端轻量 Decision Adapter → L3 精筛总结）
+- [ ] 拆解并完成 `P2-03`（用户优先级反馈 + 空闲定时归纳有界个性化档案闭环）
+- [ ] 拆解并完成 `P2-04`（外置 Telegram 信源插件，兼容公开频道与个人号私有群）
+- [ ] 用户验收 Phase 2 整体效果并拍板 Gate 2（`DEC-010`）
 
 ---
 
