@@ -4,7 +4,7 @@
 - **Task ID**：`P1-04`
 - **Phase / Milestone**：`Phase 1 (v0.1 视觉与高信号交互收口)`
 - **前置门禁（Gate Dependency）**：`Gate 0 已批准 + P1-01 / P1-02 / P1-03 已 DONE 且云端 01d3015 闭环跑通`
-- **当前状态（Status）**：`IN_REVIEW`（可选：`TODO` | `IN_PROGRESS` | `IN_REVIEW` | `DONE` | `BLOCKED`）
+- **当前状态（Status）**：`DONE`（2026-11-20 已补充双时间显示并通过 `check:i18n` / `typecheck` / `test` / `build` 核验合入 `main`）
 - **调度通道与目标执行端（Channel / Runner）**：`通道 A / 手动转交（本地或外部编码模型执行，按本任务卡契约一比一还原与联调）`
 - **工作区 / 分支策略（Worktree / Branch）**：**严禁直接在 `main` 提交代码**。推荐隔离方式二选一：
   1. **Worktree 隔离**：`git worktree add ../news_panel-p1-04 -b feat/p1-04-high-signal-panel`（`Temp/` 为未跟踪目录，此时从 `../news_panel/Temp/` 读取只读参考稿）；

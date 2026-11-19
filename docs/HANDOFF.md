@@ -7,8 +7,8 @@
 ## 1. 当前项目快照
 
 - **当前所处阶段**：**Phase 1（v0.1 X 纵向切片开发 —— Gate 0 已于 2026-11-15 正式批准）**
-- **代码仓库现状**：v0.1 纵向切片核心主链 `P1-01`、`P1-02`、`P1-03` 均已完成并合入 `main`（状态均为 `DONE`），已补充 GitHub Actions 公开 GHCR 构建（含不可变 `sha-<short>` 镜像标签）、Caddy 自动 HTTPS 反代、200 GB 月流量守卫 `deploy/traffic-guard.sh`，以及 CodeBuddy CLI 20s 冷却防超时、英文摘要翻译中文与 L1/L2 广告加固（基线提交 `01d3015` / 安全回滚 Tag `baseline-pre-p1-04`）。
-- **协同与派发策略**：当前主控作为 LEAD 已拆出 [tasks/P1-04-high-signal-panel.md](../tasks/P1-04-high-signal-panel.md)（统一浅色磨砂液态玻璃工作台前端重构，**须在独立分支/worktree `feat/p1-04-high-signal-panel` 执行**）；完成后由 LEAD 审查合入并经 GHCR 发布更新，随后进入 **Gate 1 验收**。
+- **代码仓库现状**：v0.1 纵向切片全部任务 `P1-01`、`P1-02`、`P1-03`、`P1-04` 均已完成并合入 `main`（状态均为 `DONE`），并已完成 `plugins/x-twifork` 账号锁定/封禁静默熔断修复（`729e9bc`）与前端液态玻璃高信号工作台 + 双时间显示（安全回滚 Tag `baseline-pre-p1-04` / 镜像 `sha-01d3015`）。
+- **协同与派发策略**：`main` 推送将自动触发 GitHub Actions 构建并发布最新 GHCR 镜像；云端 VPS 拉取最新镜像更新 `news-panel`（`x-twifork` 待备用号人工解锁后恢复），随后进入 **Gate 1 验收**。
 
 ---
 
@@ -53,6 +53,7 @@
 - [x] 完成 [tasks/P1-02-x-source-plugin.md](../tasks/P1-02-x-source-plugin.md)（通道 A / ZCode，`DONE`）
 - [x] 完成 [tasks/P1-03-ai-triage-pipeline.md](../tasks/P1-03-ai-triage-pipeline.md)（通道 A / Qoder，`DONE`）
 - [x] 完成 [tasks/P1-01-core-fusion-base.md](../tasks/P1-01-core-fusion-base.md) 容器镜像复验并在云服务器完成 `X 采集 + AI 筛选` 端到端 Docker 联调跑通（`DONE`，已于 `gcp-e2-west` 实测通过；注：1G `e2-micro` 突发型 CPU 上连续 Node CLI 冷启动会触发 CPU 节流，常驻建议切 `AI_PROVIDER=openai`）
+- [x] 完成 [tasks/P1-04-high-signal-panel.md](../tasks/P1-04-high-signal-panel.md)（统一浅色磨砂液态玻璃工作台前端重构 + 双时间显示，`DONE`）
 - [ ] 用户验收 v0.1 X 实时数据流去噪/评分效果与容器内存占用
 - [ ] 用户拍板冻结正式 **v1 插件规范**（含外置 Processor Webhook 钩子）及 Phase 2 多信源排期（`DEC-006`、`DEC-007`）
 
