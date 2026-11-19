@@ -1,7 +1,8 @@
 import type { Item } from "@/lib/api";
+import type { TriageStatusFilter } from "@/lib/triage-search";
 
 export interface ItemFilters {
-  triageStatus?: Item["triage_status"];
+  triageStatus?: TriageStatusFilter;
   domain?: string;
   priority?: Item["priority"];
   minScore?: number;
@@ -11,7 +12,7 @@ export interface ItemFilters {
 }
 
 export interface NormalizedItemFilters {
-  triageStatus: Item["triage_status"];
+  triageStatus: TriageStatusFilter;
   domain?: string;
   priority?: Item["priority"];
   minScore?: number;
@@ -35,7 +36,7 @@ export function normalizeItemFilters(
 }
 
 export interface BookmarkFilters {
-  triageStatus?: Item["triage_status"];
+  triageStatus?: TriageStatusFilter;
   domain?: string;
   priority?: Item["priority"];
   minScore?: number;
@@ -44,7 +45,7 @@ export interface BookmarkFilters {
 }
 
 export interface NormalizedBookmarkFilters {
-  triageStatus?: Item["triage_status"];
+  triageStatus?: TriageStatusFilter;
   domain?: string;
   priority?: Item["priority"];
   minScore?: number;
@@ -81,9 +82,18 @@ export const queryKeys = {
       [...queryKeys.items.all, "list", normalizeItemFilters(filters)] as const,
     details: () => [...queryKeys.items.all, "detail"] as const,
     detail: (id: number) => [...queryKeys.items.all, "detail", id] as const,
+    overview: () => [...queryKeys.items.all, "overview"] as const,
+    overviewCount: (key: "unread-kept" | "kept" | "filtered") =>
+      [...queryKeys.items.overview(), "count", key] as const,
+    overviewTop: (limit = 50) =>
+      [...queryKeys.items.overview(), "top", limit] as const,
   },
   bookmarks: {
     all: ["bookmarks"] as const,
     lists: () => [...queryKeys.bookmarks.all, "list"] as const,
+  },
+  plugins: {
+    all: ["plugins"] as const,
+    heartbeats: () => [...queryKeys.plugins.all, "heartbeats"] as const,
   },
 };

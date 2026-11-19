@@ -16,7 +16,18 @@ describe("triage query navigation", () => {
   it("isolates caches across triage filters and keeps saved snapshots unfiltered by default", () => {
     expect(queryKeys.items.list({domain:"ai"})).not.toEqual(queryKeys.items.list({domain:"investing"}));
     expect(normalizeItemFilters({}).triageStatus).toBe("kept");
+    expect(normalizeItemFilters({triageStatus:"all"}).triageStatus).toBe("all");
     expect(normalizeBookmarkFilters({}).triageStatus).toBeUndefined();
     expect(normalizeBookmarkFilters({minScore:0}).minScore).toBe(0);
+  });
+  it("supports explicit triage_status=all and trims whitespace domain", () => {
+    expect(parseTriageSearch({ triage_status: "all", domain: "  ai  " })).toEqual({
+      article: undefined,
+      triage_status: "all",
+      domain: "ai",
+      priority: undefined,
+      min_score: undefined,
+    });
+    expect(parseTriageSearch({ domain: "   " }).domain).toBeUndefined();
   });
 });

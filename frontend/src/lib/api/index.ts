@@ -25,6 +25,7 @@ import type {
   OIDCLoginResponse,
   Settings,
   UpdateSettingsRequest,
+  PluginHeartbeat,
 } from "./types";
 
 // Session APIs
@@ -142,6 +143,12 @@ export const settingsAPI = {
 
   update: (data: UpdateSettingsRequest) =>
     api.patch<APIResponse<Settings>>("/settings", data),
+};
+
+// Plugin APIs
+export const pluginAPI = {
+  heartbeats: () =>
+    api.get<ListResponse<PluginHeartbeat>>("/v1/plugins/heartbeats"),
 };
 
 // Search APIs

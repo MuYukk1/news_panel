@@ -38,7 +38,8 @@ function buildListBookmarksParams(
 ) {
   const params: Parameters<typeof bookmarkAPI.list>[0] = {
     limit: pageSize,
-    triage_status: filters.triageStatus,
+    triage_status:
+      filters.triageStatus === "all" ? undefined : filters.triageStatus,
     domain: filters.domain,
     priority: filters.priority,
     min_score: filters.minScore,

@@ -15,10 +15,12 @@ interface ArticleListFilters {
   feedId: number | null;
   groupId: number | null;
   articleFilter: ArticleFilter;
+  enabled?: boolean;
 }
 
 export function useArticleList(filters: ArticleListFilters) {
   const search = parseTriageSearch(useSearch({ strict: false }));
+  const enabled = filters.enabled ?? true;
   const isStarredMode = filters.articleFilter === "starred";
   const isUnreadMode = filters.articleFilter === "unread";
 
@@ -34,7 +36,7 @@ export function useArticleList(filters: ArticleListFilters) {
       priority: search.priority,
       minScore: search.min_score,
     },
-    !isStarredMode,
+    enabled && !isStarredMode,
   );
 
   // Unfiltered lookup: powers star indicators in non-starred views.
@@ -44,7 +46,7 @@ export function useArticleList(filters: ArticleListFilters) {
   const starred = useStarredItems(
     { feedId: filters.feedId, groupId: filters.groupId, triageStatus: search.triage_status,
       domain: search.domain, priority: search.priority, minScore: search.min_score },
-    isStarredMode,
+    enabled && isStarredMode,
   );
 
   // Pinned ids for this exact list keep just-marked-read rows visible in the

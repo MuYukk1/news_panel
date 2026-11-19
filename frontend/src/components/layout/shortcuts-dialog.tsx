@@ -47,9 +47,11 @@ export function ShortcutsDialog() {
     {
       title: t("shortcuts.section.navigation"),
       items: [
+        { keys: "g o", action: t("shortcuts.action.goOverview") },
         { keys: "g u", action: t("shortcuts.action.goUnread") },
         { keys: "g a", action: t("shortcuts.action.goAll") },
         { keys: "g s", action: t("shortcuts.action.goStarred") },
+        { keys: "g h", action: t("shortcuts.action.goSources") },
         { keys: "g f", action: t("shortcuts.action.goFeeds") },
       ],
     },

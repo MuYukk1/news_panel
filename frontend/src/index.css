@@ -5,82 +5,139 @@
 @import "@fontsource-variable/geist";
 @import "@fontsource-variable/geist-mono";
 @import "./typeset.css";
+@import "./components/panel/panel.css";
 
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.141 0.005 285.823);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.141 0.005 285.823);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.141 0.005 285.823);
-  --primary: oklch(0.55 0.18 250);
-  --primary-foreground: oklch(0.98 0.01 250);
-  --secondary: oklch(0.967 0.001 286.375);
-  --secondary-foreground: oklch(0.21 0.006 285.885);
-  --muted: oklch(0.967 0.001 286.375);
-  --muted-foreground: oklch(0.552 0.016 285.938);
-  --accent: oklch(0.967 0.001 286.375);
-  --accent-foreground: oklch(0.21 0.006 285.885);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.92 0.004 286.32);
-  --input: oklch(0.92 0.004 286.32);
-  --ring: oklch(0.55 0.12 250);
-  --chart-1: oklch(0.809 0.105 251.813);
-  --chart-2: oklch(0.623 0.18 250);
-  --chart-3: oklch(0.55 0.18 250);
-  --chart-4: oklch(0.48 0.16 250);
-  --chart-5: oklch(0.42 0.14 250);
-  --radius: 0.45rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: #5f5e5b;
-  --sidebar-primary: oklch(0.5 0.16 250);
-  --sidebar-primary-foreground: oklch(0.98 0.01 250);
-  --sidebar-accent: oklch(0.967 0.001 286.375);
-  --sidebar-accent-foreground: oklch(0.21 0.006 285.885);
-  --sidebar-border: oklch(0.92 0.004 286.32);
-  --sidebar-ring: oklch(0.55 0.12 250);
-  --font-geist: "Geist Variable", sans-serif;
+  color-scheme: light dark;
+
+  /* Liquid glass canvas & surface tokens */
+  --bg: #e8ebf9;
+  --g1: #d8d4ff;
+  --g2: #c6e5fb;
+  --glass-panel: rgba(255, 255, 255, 0.74);
+  --glass-panel-strong: rgba(255, 255, 255, 0.9);
+  --glass-sidebar: rgba(255, 255, 255, 0.62);
+  --glass-border: rgba(255, 255, 255, 0.92);
+  --glass-inner-line: rgba(70, 80, 160, 0.12);
+  --glass-shadow: rgba(60, 64, 160, 0.22);
+  --glass-soft: rgba(84, 86, 230, 0.08);
+  --glass-soft-hover: rgba(84, 86, 230, 0.14);
+  --glass-bar: #d3d8f0;
+  --glass-ink: #1a1f40;
+  --glass-sub: #575f85;
+  --glass-faint: #7c85ab;
+  --glass-acc: #5456e6;
+  --status-ok: #1c9e6a;
+  --prio-critical: #e5484d;
+  --prio-high: #e27a14;
+  --prio-normal: #2f7fe8;
+  --prio-low: #8d95b8;
+
+  /* Semantic theme tokens aligned to liquid glass */
+  --background: #e8ebf9;
+  --foreground: #1a1f40;
+  --card: rgba(255, 255, 255, 0.78);
+  --card-foreground: #1a1f40;
+  --popover: rgba(255, 255, 255, 0.96);
+  --popover-foreground: #1a1f40;
+  --primary: #5456e6;
+  --primary-foreground: #ffffff;
+  --secondary: rgba(84, 86, 230, 0.09);
+  --secondary-foreground: #1a1f40;
+  --muted: rgba(84, 86, 230, 0.07);
+  --muted-foreground: #575f85;
+  --accent: rgba(84, 86, 230, 0.1);
+  --accent-foreground: #1a1f40;
+  --destructive: #e5484d;
+  --border: rgba(70, 80, 160, 0.14);
+  --input: rgba(70, 80, 160, 0.18);
+  --ring: rgba(84, 86, 230, 0.45);
+  --chart-1: #5456e6;
+  --chart-2: #2f7fe8;
+  --chart-3: #1c9e6a;
+  --chart-4: #e27a14;
+  --chart-5: #e5484d;
+  --radius: 0.75rem;
+  --sidebar: rgba(255, 255, 255, 0.62);
+  --sidebar-foreground: #575f85;
+  --sidebar-primary: #5456e6;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: rgba(84, 86, 230, 0.1);
+  --sidebar-accent-foreground: #1a1f40;
+  --sidebar-border: rgba(255, 255, 255, 0.92);
+  --sidebar-ring: rgba(84, 86, 230, 0.45);
+  --font-geist: "Geist Variable", "Inter Variable", sans-serif;
   --font-geist-mono: "Geist Mono Variable", monospace;
 }
 
+:root.light {
+  color-scheme: light;
+}
+
 .dark {
-  --background: oklch(0.141 0.005 285.823);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.21 0.006 285.885);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.21 0.006 285.885);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.6 0.16 250);
-  --primary-foreground: oklch(0.98 0.01 250);
-  --secondary: oklch(0.274 0.006 286.033);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.274 0.006 286.033);
-  --muted-foreground: oklch(0.705 0.015 286.067);
-  --accent: oklch(0.274 0.006 286.033);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.6 0.12 250);
-  --chart-1: oklch(0.809 0.105 251.813);
-  --chart-2: oklch(0.7 0.14 250);
-  --chart-3: oklch(0.6 0.16 250);
-  --chart-4: oklch(0.52 0.14 250);
-  --chart-5: oklch(0.45 0.12 250);
-  --sidebar: oklch(0.21 0.006 285.885);
-  --sidebar-foreground: #9b9a97;
-  --sidebar-primary: oklch(0.55 0.14 250);
-  --sidebar-primary-foreground: oklch(0.98 0.01 250);
-  --sidebar-accent: oklch(0.274 0.006 286.033);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.6 0.12 250);
+  color-scheme: dark;
+
+  --bg: #0b0d1f;
+  --g1: #25206a;
+  --g2: #0d3351;
+  --glass-panel: rgba(25, 28, 58, 0.66);
+  --glass-panel-strong: rgba(20, 23, 50, 0.92);
+  --glass-sidebar: rgba(19, 22, 47, 0.72);
+  --glass-border: rgba(255, 255, 255, 0.1);
+  --glass-inner-line: rgba(255, 255, 255, 0.08);
+  --glass-shadow: rgba(0, 0, 0, 0.58);
+  --glass-soft: rgba(148, 150, 255, 0.12);
+  --glass-soft-hover: rgba(148, 150, 255, 0.19);
+  --glass-bar: #2b3058;
+  --glass-ink: #e8eafb;
+  --glass-sub: #a4aad2;
+  --glass-faint: #7077a3;
+  --glass-acc: #9496ff;
+  --status-ok: #47d79b;
+  --prio-critical: #ff7479;
+  --prio-high: #ffa24d;
+  --prio-normal: #6aa8ff;
+  --prio-low: #7077a3;
+
+  --background: #0b0d1f;
+  --foreground: #e8eafb;
+  --card: rgba(25, 28, 58, 0.72);
+  --card-foreground: #e8eafb;
+  --popover: rgba(20, 23, 50, 0.96);
+  --popover-foreground: #e8eafb;
+  --primary: #9496ff;
+  --primary-foreground: #0b0d1f;
+  --secondary: rgba(148, 150, 255, 0.14);
+  --secondary-foreground: #e8eafb;
+  --muted: rgba(148, 150, 255, 0.1);
+  --muted-foreground: #a4aad2;
+  --accent: rgba(148, 150, 255, 0.16);
+  --accent-foreground: #e8eafb;
+  --destructive: #ff7479;
+  --border: rgba(255, 255, 255, 0.1);
+  --input: rgba(255, 255, 255, 0.14);
+  --ring: rgba(148, 150, 255, 0.45);
+  --chart-1: #9496ff;
+  --chart-2: #6aa8ff;
+  --chart-3: #47d79b;
+  --chart-4: #ffa24d;
+  --chart-5: #ff7479;
+  --sidebar: rgba(19, 22, 47, 0.72);
+  --sidebar-foreground: #a4aad2;
+  --sidebar-primary: #9496ff;
+  --sidebar-primary-foreground: #0b0d1f;
+  --sidebar-accent: rgba(148, 150, 255, 0.16);
+  --sidebar-accent-foreground: #e8eafb;
+  --sidebar-border: rgba(255, 255, 255, 0.1);
+  --sidebar-ring: rgba(148, 150, 255, 0.45);
 }
 
 @theme inline {
-  --font-sans: "Inter Variable", sans-serif;
+  --font-sans:
+    "Inter Variable", "PingFang SC", "Hiragino Sans GB", "Noto Sans SC",
+    "Microsoft YaHei", system-ui, sans-serif;
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -125,16 +182,25 @@
   * {
     @apply border-border outline-ring/50;
   }
+  html {
+    accent-color: var(--glass-acc);
+  }
   body {
-    @apply bg-background text-foreground;
+    background:
+      radial-gradient(1100px 620px at 8% -8%, var(--g1), transparent 62%),
+      radial-gradient(900px 600px at 100% 100%, var(--g2), transparent 60%),
+      var(--bg);
+    background-attachment: fixed;
+    color: var(--glass-ink);
+    -webkit-font-smoothing: antialiased;
   }
 }
 
 .sidebar-typography {
-  font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont,
-    "Segoe UI Variable Display", "Segoe UI", Helvetica,
-    "Apple Color Emoji", "Noto Sans Arabic", "Noto Sans Hebrew", Arial,
-    sans-serif, "Segoe UI Emoji", "Segoe UI Symbol";
+  font-family:
+    "Inter Variable", "PingFang SC", "Hiragino Sans GB", "Noto Sans SC",
+    "Microsoft YaHei", ui-sans-serif, -apple-system, BlinkMacSystemFont,
+    "Segoe UI", sans-serif;
   font-size: 14px;
   font-weight: 500;
 }

@@ -1,18 +1,37 @@
 import type { Item } from "@/lib/api";
+import { useI18n } from "@/lib/i18n";
+import {
+  DomainPill,
+  PriorityPill,
+  SignalBars,
+  TriageStatusPill,
+} from "@/components/panel/signal-bars";
 
-// Minimal shared list/detail presentation; richer panel controls belong to P1-04.
 export function TriageMetadata({ article }: { article: Item }) {
-  if (article.id < 0) return <p className="text-sm text-muted-foreground">Triage unavailable for saved snapshot</p>;
+  const { t } = useI18n();
+
+  if (article.id < 0) {
+    return (
+      <p className="rounded-xl bg-[var(--glass-soft)] px-3 py-2 text-xs text-[var(--glass-sub)]">
+        {t("panel.drawer.snapshotNoTriage")}
+      </p>
+    );
+  }
+
   return (
-    <div className="space-y-2 text-sm text-foreground">
-      <dl className="flex flex-wrap gap-x-4 gap-y-1 break-words">
-        <div className="flex gap-1"><dt className="text-muted-foreground">Domain:</dt><dd>{article.domain}</dd></div>
-        <div className="flex gap-1"><dt className="text-muted-foreground">Score:</dt><dd>{article.ai_score ?? "Unscored"}</dd></div>
-        <div className="flex gap-1"><dt className="text-muted-foreground">Priority:</dt><dd>{article.priority}</dd></div>
-        <div className="flex gap-1"><dt className="text-muted-foreground">Triage:</dt><dd>{article.triage_status}</dd></div>
-        <div className="flex min-w-0 gap-1"><dt className="text-muted-foreground">Tags:</dt><dd className="break-words">{article.ai_tags?.join(", ") || "None"}</dd></div>
-      </dl>
-      {article.ai_summary && <p className="break-words"><span className="text-muted-foreground">Summary: </span>{article.ai_summary}</p>}
+    <div className="flex flex-wrap items-center gap-2">
+      <DomainPill domain={article.domain} />
+      <TriageStatusPill status={article.triage_status} />
+      <PriorityPill priority={article.priority} score={article.ai_score} />
+      <SignalBars score={article.ai_score} priority={article.priority} />
+      {article.ai_tags?.map((tag) => (
+        <span
+          key={tag}
+          className="rounded-full bg-[var(--glass-soft)] px-2 py-0.5 text-[11px] font-medium text-[var(--glass-sub)]"
+        >
+          #{tag}
+        </span>
+      ))}
     </div>
   );
 }

@@ -45,6 +45,7 @@ import {
 import { useDeleteGroup, useGroups, useUpdateGroup } from "@/queries/groups";
 import { useUIStore } from "@/store";
 import { FeedGroupCard } from "@/components/feed/feed-group-card";
+import { ThemeToggleButton } from "@/components/panel/theme-toggle-button";
 import { useIsMobile } from "@/hooks/use-mobile";
 
 export const Route = createLazyFileRoute("/feeds")({
@@ -226,11 +227,14 @@ function FeedsPage() {
             <SidebarTrigger />
             <h1 className="text-lg font-semibold">{t("feeds.header")}</h1>
           </div>
-          <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-            <Rss className="h-4 w-4" />
-            <span className="font-medium">
-              {t("feeds.count", { count: feeds.length })}
-            </span>
+          <div className="flex items-center gap-2.5 text-sm text-muted-foreground">
+            <div className="flex items-center gap-1.5">
+              <Rss className="h-4 w-4" />
+              <span className="font-medium">
+                {t("feeds.count", { count: feeds.length })}
+              </span>
+            </div>
+            <ThemeToggleButton />
           </div>
         </ContentHeader>
 

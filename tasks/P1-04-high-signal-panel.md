@@ -4,7 +4,7 @@
 - **Task ID**：`P1-04`
 - **Phase / Milestone**：`Phase 1 (v0.1 视觉与高信号交互收口)`
 - **前置门禁（Gate Dependency）**：`Gate 0 已批准 + P1-01 / P1-02 / P1-03 已 DONE 且云端 01d3015 闭环跑通`
-- **当前状态（Status）**：`TODO`（可选：`TODO` | `IN_PROGRESS` | `IN_REVIEW` | `DONE` | `BLOCKED`）
+- **当前状态（Status）**：`IN_REVIEW`（可选：`TODO` | `IN_PROGRESS` | `IN_REVIEW` | `DONE` | `BLOCKED`）
 - **调度通道与目标执行端（Channel / Runner）**：`通道 A / 手动转交（本地或外部编码模型执行，按本任务卡契约一比一还原与联调）`
 - **工作区 / 分支策略（Worktree / Branch）**：**严禁直接在 `main` 提交代码**。推荐隔离方式二选一：
   1. **Worktree 隔离**：`git worktree add ../news_panel-p1-04 -b feat/p1-04-high-signal-panel`（`Temp/` 为未跟踪目录，此时从 `../news_panel/Temp/` 读取只读参考稿）；
@@ -143,7 +143,7 @@
     - 数据来源：拉取 `itemAPI.list({ triage_status: "kept", limit: 50 })`，在客户端做副本按 `(ai_score ?? -1)` 降序，取前 **4–5 条**展示（确保一屏放得下、无长滚动）。
     - 每条渲染为横向紧凑行卡片：
       - 左：`np-tile` 领域渐变小图标（`ai` / `investing` / `deals` / `other` 专属图标与渐变）；
-      - 中：标题（未读圆点标识）+ 2 行中文 `ai_summary`（若暂无摘要则截断 `content`）+ 底行元信息（领域徽章、`author` / 来源、`ai_tags.slice(0, 2)`、发布相对时间）；
+      - 中：标题（未读圆点标识）+ 2 行中文 `ai_summary`（若暂无摘要则截断 `content`）+ 底行元信息（领域徽章、`author` / 来源、`ai_tags.slice(0, 2)`、**双时间显示：原文发布时间 `published_at`/`pub_date` + 插件拉取时间 `created_at`**，hover 展示精确本地时间）；
       - 右：优先级徽章（`critical / high / normal / low`）+ `SignalBars`（10 格分值进度条 + `ai_score` 数字）+ 收藏快捷图标按钮。
       - 点击整卡：在当前 `/overview` 页直接打开 `ArticleDrawer`（利用 `?article=<id>` 或 URL 参数，**确保在 `/overview` 渲染抽屉或保持 `AppLayout` 下抽屉正常滑出并同步未读状态**！注意核查 `useUrlState` / `ArticleDrawer` 在非 `/$filter` 路由时的 `selectedArticleId` 兼容）。
     - 卡片右上角附 CTA：`查看全部资讯 →`（跳转到 `/unread` 或 `/all`）。
@@ -161,7 +161,7 @@
     - **最低分阈值 `min_score`**：快捷按钮 `不限 / ≥ 45 / ≥ 60 / ≥ 80` + 滑动条 `0–100`；
     - **列表排布排序**：客户端支持当前已加载分页按 `发布时间` 或 `AI 评分降序` 视图排序（说明仅重排已加载项以免误导分页游标）；
     - 一键「重置筛选」按钮。
-- **单条情报卡片**：去掉过去纯文本 `Domain: ... Score: ...` 裸 `<dl>` 堆砌，改为与总览一致的**紧凑液态玻璃行样式**（渐变域图标 + 中文标题/推文首行 + 中文 `ai_summary` + 标签胶囊 + 优先级彩色胶囊 + `SignalBars` 评分条 + hover 操作按钮：标记已读/未读、收藏、打开原链接）。在 `triage_status === "filtered"` 时给出清晰醒目的「已拦截原因 / L1 标签」提示，方便用户核查是否误杀。
+- **单条情报卡片**：去掉过去纯文本 `Domain: ... Score: ...` 裸 `<dl>` 堆砌，改为与总览一致的**紧凑液态玻璃行样式**（渐变域图标 + 中文标题/推文首行 + 中文 `ai_summary` + 标签胶囊 + **双时间显示（发布 `published_at`/`pub_date` · 拉取 `created_at`，收藏快照列表不误标拉取时间）** + 优先级彩色胶囊 + `SignalBars` 评分条 + hover 操作按钮：标记已读/未读、收藏、打开原链接）。在 `triage_status === "filtered"` 时给出清晰醒目的「已拦截原因 / L1 标签」提示，方便用户核查是否误杀。
 
 #### C. 右侧滑入阅读抽屉 `ArticleDrawer`（玻璃质感 + 中英对照层次）
 - **必须保留现有状态安全逻辑**：继续复用 `useItem`、`useAutoMarkRead`、`pinRead`/`unpinRead`、收藏与 `j / k / Esc / s / o` 键盘导航，**不要改坏收藏页（`article.id < 0` 快照条目）与未读撤回时序**。
@@ -170,7 +170,7 @@
   - 顶部动作栏：已读切换、收藏、打开原文、`上一条 / 下一条`、关闭；
   - 正文区优先级从上到下：
     1. 元信息标签条（领域胶囊 + 分拣状态 + 优先级 + `ai_score` 分 + 标签 `ai_tags`）
-    2. 标题（若为推文/短贴，配合作者 `@author`、来源 `source_id`、发布时间）
+    2. 标题（若为推文/短贴，配合作者 `@author`、来源 `source_id`、**双时间徽章：原文发布时间 `published_at`/`pub_date` 与插件拉取时间 `created_at` 均同时展示相对时间与精确本地时间**）
     3. **高亮「AI 中文摘要与提炼」玻璃卡片**（展示 `article.ai_summary`，清晰醒目）
     4. **可平滑折叠/展开的「原文 / 原始推文内容」区块**（基于 `grid-template-rows: 0fr -> 1fr` 动画；默认若中文摘要已涵盖全文可折叠或保留展开开关，安全渲染经 `processArticleContent` 净化后的正文，含 `x.com` 原推文长文本）
     5. **互动元数据卡（条件渲染）**：仅当 `raw_meta.metrics` 存在数字字段（如 `likes`、`retweets`、`replies`、`views`）时渲染 4 格轻量数字卡，同时安全展示 `raw_meta.origin_label`（如命中的关注账号或搜索词），绝不显示敏感凭证或写死假数据。
@@ -239,11 +239,11 @@
 
 ## 验收标准与验证命令（Acceptance Criteria & Verification）
 
-- [ ] **视觉与材质对齐**：浅色与深色模式均呈现淡紫/冰蓝径向光晕画布 + 统一浅色磨砂玻璃侧栏（暗色模式跟随切换）+ 玻璃描边弥散阴影卡片；**桌面端无底部 Dock 栏**。
-- [ ] **首页总览 `/overview` 一屏可读**：包含顶部问候与操作栏、4 个真数据可点击 KPI 卡片、左栏高分要闻精选（4–5 条）、右栏领域热力 + 真实插件心跳卡；无假数据、无 `Ask AI` 摆设。
-- [ ] **侧栏与快捷入口齐全**：侧栏含「总览 / 全部资讯 / 未读 / 收藏」，**并显式包含「已拦截 (filtered)」一键快捷入口**、常用领域快捷入口及「来源状态 `/sources`」入口。
-- [ ] **资讯流高级筛选 & 抽屉**：支持按 `triage_status` / `domain` / `priority` / `min_score` / `unread` 筛选并与 URL 同步；点击条目无论从 `/overview` 还是 `/$filter` 均能平滑打开右侧抽屉，展示 AI 中文摘要、平滑折叠英文原文、`raw_meta.metrics` 互动数据、已读/未读与收藏切换、键盘快捷键。
-- [ ] **全量校验通过（Windows 或 WSL 下在 `frontend/` 执行）**：
+- [x] **视觉与材质对齐**：浅色与深色模式均呈现淡紫/冰蓝径向光晕画布 + 统一浅色磨砂玻璃侧栏（暗色模式跟随切换）+ 玻璃描边弥散阴影卡片；**桌面端无底部 Dock 栏**。
+- [x] **首页总览 `/overview` 一屏可读**：包含顶部问候与操作栏、4 个真数据可点击 KPI 卡片、左栏高分要闻精选（4–5 条）、右栏领域热力 + 真实插件心跳卡；无假数据、无 `Ask AI` 摆设。
+- [x] **侧栏与快捷入口齐全**：侧栏含「总览 / 全部资讯 / 未读 / 收藏」，**并显式包含「已拦截 (filtered)」一键快捷入口**、常用领域快捷入口及「来源状态 `/sources`」入口。
+- [x] **资讯流高级筛选 & 抽屉 & 双时间显示**：支持按 `triage_status` / `domain` / `priority` / `min_score` / `unread` 筛选并与 URL 同步；列表与总览卡片紧凑展示「发布 + 拉取」双时间（hover 显示精确时间），点击条目无论从 `/overview` 还是 `/$filter` 均能平滑打开右侧抽屉，展示双时间精确明细、AI 中文摘要、平滑折叠英文原文、`raw_meta.metrics` 互动数据、已读/未读与收藏切换、键盘快捷键。
+- [ ] **全量校验通过（Windows 或 WSL 下在 `frontend/` 执行）**（`install` / `check:i18n` / `typecheck` / `test` / `build` 全部通过；`pnpm run lint` 因 `main` 基线 `frontend/package.json` 已锁定 `typescript@~7.0.2` 与 `typescript-eslint@8.71.0` 不兼容而报错，详见下方 Handoff Report）：
   ```bash
   cd frontend
   pnpm install --frozen-lockfile
@@ -253,23 +253,55 @@
   pnpm run test
   pnpm run build
   ```
-- [ ] **新增单测 & 边界核验**：为新增筛选/聚合/API 映射逻辑补充至少 2 组 Vitest 单元测试；提交前执行 `git diff --name-only` 与 `git status --short` 确认 100% 落入 `Owned Files` 且未夹带 `Temp/**`。
+- [x] **新增单测 & 边界核验**：为新增筛选/聚合/API 映射逻辑补充至少 2 组 Vitest 单元测试；提交前执行 `git diff --name-only` 与 `git status --short` 确认 100% 落入 `Owned Files` 且未夹带 `Temp/**`。
 
 ---
 
 ## Handoff Report（交付回执 —— 结束前必填）
-- **提交状态**：`IN_REVIEW` | `BLOCKED`
-- **执行端 / 通道**：`<实际执行工具/模型与所属 worktree 分支名>`
+- **提交状态**：`IN_REVIEW`
+- **执行端 / 通道**：`Antigravity / 独立分支 feat/p1-04-high-signal-panel（基于 baseline-pre-p1-04 / 01d3015）`
 - **实际改动文件清单**：
-  - `<path>`（说明改动内容）
-- **实测验证命令与观察结果**（仅填写最终修改后亲自跑过并观察到的真实输出）：
-  - `pnpm run check:i18n` → `...`
-  - `pnpm run lint` → `...`
-  - `pnpm run typecheck` → `...`
-  - `pnpm run test` → `...`
-  - `pnpm run build` → `...`
-  - `git diff --name-only` → `...`
+  - `frontend/index.html`（补充 `<meta name="color-scheme" content="light dark">` 与明暗 `theme-color`）
+  - `frontend/src/index.css`（接入液态玻璃 `:root` / `.dark` 色彩与材质变量、双光晕径向画布背景、与 `next-themes` 同步的 `color-scheme` 与 `accent-color`）
+  - `frontend/src/components/panel/panel.css`（新增液态玻璃面板 `.np-glass`、`.np-sidebar-glass`、`.np-drawer-glass`、`.np-card-interactive`、`.np-tile`、`.np-orig-collapse`、`.np-range` 及 `prefers-reduced-motion` 支持）
+  - `frontend/src/components/panel/panel-utils.ts`（新增领域/优先级/心跳映射、Top Picks 排序、Domain Pulse 聚合、`raw_meta.metrics` 安全提取、已加载条目排序、双时间解析 `resolveItemTimestamps` 与精确时间格式化 `formatExactDateTime` 等纯函数）
+  - `frontend/src/components/panel/panel-utils.test.ts`（新增 5 组 Vitest 单元测试覆盖聚合、排序、元数据清洗、心跳统计与双时间解析）
+  - `frontend/src/components/panel/item-timestamps.tsx`（新增 `ItemTimestamps` 复用组件：卡片 `compact` 模式展示「发布 · 拉取」相对时间与 hover 精确时间，阅读抽屉 `detailed` 模式同时展示相对与精确本地时间，收藏快照安全隐藏非拉取时间）
+  - `frontend/src/components/panel/signal-bars.tsx`（新增 `DomainTile`、`DomainPill`、`PriorityPill`、`TriageStatusPill`、`SignalBars` 组件）
+  - `frontend/src/components/panel/theme-toggle-button.tsx`（新增顶栏一键亮/暗切换按钮，与 `next-themes` 及 `/api/settings` 双向同步）
+  - `frontend/src/components/panel/kpi-strip.tsx`（新增 4 枚真实 API 数据驱动的可点击 KPI 卡片）
+  - `frontend/src/components/panel/top-picks-card.tsx`（新增首页高分要闻精选卡，点击直接在 `/overview?article=<id>` 滑出抽屉）
+  - `frontend/src/components/panel/domain-pulse-card.tsx`（新增领域热力分布卡，点击直达对应领域筛选）
+  - `frontend/src/components/panel/source-health-card.tsx`（新增外置插件心跳概览卡，对接 `GET /api/v1/plugins/heartbeats`）
+  - `frontend/src/components/panel/overview-page.tsx`（新增 `/overview` 一屏横向 Bento 总览页）
+  - `frontend/src/components/panel/triage-toolbar.tsx`（新增资讯流顶部玻璃控制条、领域胶囊条与可平滑折叠的高级筛选面板）
+  - `frontend/src/components/panel/sources-page.tsx`（新增 `/sources` 来源状态监控页：外置插件心跳网格 + 内置 RSS 订阅概况表）
+  - `frontend/src/lib/api/types.ts`、`frontend/src/lib/api/index.ts`（新增 `PluginHeartbeat` 类型与 `pluginAPI.heartbeats()`）
+  - `frontend/src/lib/api/plugin-api.test.ts`（新增 2 组 Vitest 单元测试校验 `/api/v1/plugins/heartbeats` 与 `/api/items` 查询参数映射）
+  - `frontend/src/lib/triage-search.ts`、`frontend/src/lib/triage-search.test.ts`（扩展支持 `triage_status="all"` 与空白 `domain` 清洗并补充单测）
+  - `frontend/src/queries/keys.ts`、`frontend/src/queries/items.ts`、`frontend/src/queries/bookmarks.ts`、`frontend/src/queries/plugins.ts`（新增 `useOverviewCounts`、`useOverviewKeptItems`、`usePluginHeartbeats`，支持 `triageStatus="all"` 省略查询参数，并同步已读状态乐观更新至总览缓存）
+  - `frontend/src/hooks/use-url-state.ts`、`frontend/src/hooks/use-article-list.ts`、`frontend/src/hooks/use-keyboard.ts`（修复 `/overview` 页内打开/关闭 `?article=<id>` 抽屉兼容、暴露 `triageSearch`/`setTriageSearch`、新增 `g o` 与 `g h` 导航快捷键）
+  - `frontend/src/components/layout/app-layout.tsx`、`frontend/src/components/layout/sidebar.tsx`、`frontend/src/components/layout/content-header.tsx`、`frontend/src/components/layout/shortcuts-dialog.tsx`（重构为统一浅色磨砂液态玻璃侧栏，内置「已拦截噪声」快捷入口、领域快捷过滤、折叠订阅树与底部插件健康卡，桌面端无底部 Dock 栏）
+  - `frontend/src/components/feed/feed-list.tsx`、`frontend/src/components/feed/feed-group-card.tsx`（适配折叠订阅树与玻璃卡片视觉）
+  - `frontend/src/components/article/article-list.tsx`、`frontend/src/components/article/article-item.tsx`、`frontend/src/components/article/article-drawer.tsx`、`frontend/src/components/article/triage-metadata.tsx`（升级资讯流玻璃卡片、拦截审计横幅、右侧玻璃滑入阅读抽屉、AI 中文摘要卡、平滑折叠原文区及条件渲染的 `raw_meta.metrics` 互动卡）
+  - `frontend/src/routes/index.tsx`、`frontend/src/routes/overview.tsx`、`frontend/src/routes/overview.lazy.tsx`、`frontend/src/routes/sources.tsx`、`frontend/src/routes/sources.lazy.tsx`、`frontend/src/routes/feeds.lazy.tsx`、`frontend/src/routes/login.lazy.tsx`（新增 `/overview` 与 `/sources` 路由，`/` 默认跳转 `/overview`，对齐登录页与订阅管理页玻璃视觉）
+  - `frontend/src/lib/i18n/messages/{en,zh,de,fr,es,ru,pt,sv}.ts`（8 语种词典全量同步新增 114 个键至 303 键，含双时间展示文案）
+  - `tasks/P1-04-high-signal-panel.md`、`tasks/INDEX.md`（更新规格、状态与回执）
+- **实测验证命令与观察结果**（均为最终修改后亲自执行并观察到的真实输出）：
+  - `pnpm --dir frontend install --frozen-lockfile` → `✓ Lockfile passes supply-chain policies (621 entries)`, `Packages: +514`, `Done in 13.6s`（exit code 0）
+  - `pnpm --dir frontend run check:i18n` → `[zh/de/fr/es/ru/pt/sv] OK (303 keys)`, `All locale dictionaries are complete.`（exit code 0）
+  - `pnpm --dir frontend run lint` → **退出码 1（基线固有工具链冲突，修改代码前即存在）**：`Error: typescript-eslint does not support TS 7.0.`（因 `Forbidden Files` 中的 `frontend/package.json` 锁定了 `typescript@~7.0.2` 与 `typescript-eslint@8.71.0`，本任务严格遵守边界未改动 `frontend/package.json` 或 `eslint.config.js`）
+  - `pnpm --dir frontend run typecheck` → `tsr generate && tsc -b --noEmit` 通过，零报错（exit code 0）
+  - `pnpm --dir frontend run test` → `Test Files 7 passed (7)`, `Tests 34 passed (34)`（含新增 `panel-utils.test.ts` 5 用例、`plugin-api.test.ts` 2 用例与 `triage-search.test.ts` 扩展用例，exit code 0）
+  - `pnpm --dir frontend run build` → `tsr generate && tsc -b && vite build` 成功，`2406 modules transformed`, `✓ built in 1.74s`（exit code 0）
+  - `git diff --name-only` & `git status --short` → 确认全部修改与新增文件 100% 落入 `Owned Files`（`frontend/index.html`、`frontend/src/**`、`tasks/P1-04-high-signal-panel.md`、`tasks/INDEX.md`），未触碰 `backend/**`、`plugins/**`、`deploy/**`、`Dockerfile`、`frontend/package.json`，且未 `git add Temp/`
 - **自检截图 / 界面效果确认**：
-  - `<桌面端 1440px /overview、/all?triage_status=filtered、/sources、抽屉展开及深色模式实际检查记录>`
+  - 使用临时独立 scratch 静态预览服务（不落盘到仓库）在 1440×900 桌面端浏览器实机验证全部 5 项检查点且零控制台报错：
+    1. `/` 自动跳转 `/overview`：统一浅色磨砂玻璃侧栏（无深蓝底、无底部 Dock 栏）、60px 问候顶栏、4 张 KPI 卡、左侧 5 条高分要闻、右侧领域热力与采集源心跳一屏可读；
+    2. 在 `/overview` 点击首条高分要闻后直接滑出右侧玻璃抽屉（`/overview?article=101`），完整展示元信息胶囊、AI 中文摘要卡、平滑展开/收起原文区及 4 格 `raw_meta.metrics` 互动数据；
+    3. 点击侧栏「已拦截噪声」进入 `/all?triage_status=filtered`，展示拦截审计提示条，并验证「高级筛选」折叠面板（优先级、最低分滑块/预设、已加载排序）展开正常；
+    4. 点击侧栏「来源状态」进入 `/sources`，正确展示外置插件心跳卡片（含 `degraded` 告警框）与内置 RSS 概况表；
+    5. 顶栏点击切换深色模式后 `/overview` 完整切换至深色紫蓝光晕与深色磨砂玻璃面板，文字与徽章对比度清晰可读。
 - **边界变更申请 / 遗留风险 / 下一步建议**：
-  - `<无，或写明需 Lead/人类审核合入并触发 GHCR 构建的事项>`
+  - **边界外工具链提示（供 Lead 评估）**：仓库 `main` 基线的 `frontend/package.json` 锁定的 `typescript@~7.0.2` 与 `typescript-eslint@8.71.0` 存在上游不兼容，导致 `pnpm run lint` 在修改前后均直接抛出 `typescript-eslint does not support TS 7.0.`；因 `frontend/package.json` 属 `Forbidden Files`，本次未擅自修改。建议 Lead 审查合入后按需在独立维护提交中升级/适配 ESLint 依赖（或等 `typescript-eslint` 支持 TS 7）。
+  - 下一步建议：Lead 审阅 `feat/p1-04-high-signal-panel` 分支改动与实机界面效果，确认无误后合入 `main` 并触发 GHCR 镜像构建部署验证，推进 Gate 1 验收。
