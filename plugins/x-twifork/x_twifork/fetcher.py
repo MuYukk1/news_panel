@@ -22,9 +22,20 @@ from .transform import TweetLike
 
 logger = logging.getLogger(__name__)
 
-FETCH_KINDS = ("auth", "rate_limit", "blocked", "transient", "network")
+FETCH_KINDS = (
+    "auth",
+    "account_locked",
+    "account_suspended",
+    "rate_limit",
+    "blocked",
+    "transient",
+    "network",
+)
+FATAL_ACCOUNT_KINDS = frozenset({"account_locked", "account_suspended"})
 
 _AUTH_EXC = {"Unauthorized"}
+_ACCOUNT_LOCKED_EXC = {"AccountLocked"}
+_ACCOUNT_SUSPENDED_EXC = {"AccountSuspended"}
 _RATE_EXC = {"TooManyRequests"}
 _BLOCK_EXC = {"Forbidden"}  # 常见于 Cloudflare 拦截页
 
@@ -43,7 +54,23 @@ def _classify(exc: Exception) -> FetchError:
     module = type(exc).__module__ or ""
     if "twikit" in module or "twifork" in module:
         if name in _AUTH_EXC:
-            return FetchError(f"upstream session rejected ({name}) — cookies likely stale", "auth")
+            return FetchError(
+                f"upstream session rejected ({name}) — cookies likely stale",
+                "auth",
+                retryable=False,
+            )
+        if name in _ACCOUNT_LOCKED_EXC:
+            return FetchError(
+                f"upstream account locked ({name}) — manual unlock required before restarting plugin",
+                "account_locked",
+                retryable=False,
+            )
+        if name in _ACCOUNT_SUSPENDED_EXC:
+            return FetchError(
+                f"upstream account suspended ({name}) — switch backup account and restart plugin",
+                "account_suspended",
+                retryable=False,
+            )
         if name in _RATE_EXC:
             return FetchError(f"upstream rate limit hit ({name})", "rate_limit")
         if name in _BLOCK_EXC:
@@ -153,7 +180,11 @@ class TwiforkFetcher:
     async def _check_session(self, client: Any) -> None:
         if self._session_checked:
             return
-        logged_in = bool(await client.is_logged_in())
+        try:
+            logged_in = bool(await client.is_logged_in())
+        except Exception as exc:
+            self._maybe_drop_client(exc)
+            raise _classify(exc) from exc
         self._session_checked = True
         if not logged_in:
             self._client = None
@@ -165,7 +196,7 @@ class TwiforkFetcher:
             )
 
     def _maybe_drop_client(self, exc: Exception) -> None:
-        if type(exc).__name__ in _AUTH_EXC:
+        if type(exc).__name__ in (_AUTH_EXC | _ACCOUNT_LOCKED_EXC | _ACCOUNT_SUSPENDED_EXC):
             self._client = None
             self._session_checked = False
 
@@ -179,6 +210,7 @@ class TwiforkFetcher:
         try:
             user = await client.get_user_by_screen_name(account.lstrip("@"))
         except Exception as exc:
+            self._maybe_drop_client(exc)
             raise _classify(exc) from exc
         user_id = str(getattr(user, "id", "") or "")
         if not user_id:

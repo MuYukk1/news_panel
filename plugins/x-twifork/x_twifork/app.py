@@ -1,7 +1,8 @@
 """采集主循环编排：planner → fetch → transform → 增量选择 → ingest → heartbeat。
 
 职责边界：
-- 上游拉取失败永不打断主循环：按 ``FetchError.kind`` 记入退避并在心跳中如实上报；
+- 上游常规拉取失败永不打断主循环：按 ``FetchError.kind`` 记入退避并在心跳中如实上报；
+- 命中账号锁定/封禁（``AccountLocked`` / ``AccountSuspended``）时：单轮立即中断剩余来源、上报明确 ``status=error`` 诊断心跳，常驻模式进入静默挂起等待人工解锁并重启容器（避免在 ``restart: unless-stopped`` 下无限重启循环），``--once`` 模式返回退出码 1；
 - ingest 投递失败时游标不推进，下一轮自然重发（核心按 (source_id, external_id) 幂等去重）；
 - dry-run 模式不写 state.json、不触碰真实上游，输出/推送完全合规的契约 payload。
 """
@@ -19,7 +20,7 @@ from typing import Any
 
 from . import PLUGIN_NAME, __version__
 from .config import Config
-from .fetcher import FetchError
+from .fetcher import FATAL_ACCOUNT_KINDS, FetchError
 from .planner import AIQueryPlanner, QueryPlan
 from .redact import redact_text
 from .samples import SAMPLE_TWEETS
@@ -51,6 +52,7 @@ class CycleResult:
     error_message: str | None = None
     failure_delay: float = 0.0
     failures: list[tuple[str, str]] = field(default_factory=list)  # (origin_key, kind)
+    halt_reason: str | None = None  # 命中账号锁定/封禁时置位，触发常驻静默熔断
 
 
 class PluginApp:
@@ -69,6 +71,7 @@ class PluginApp:
         clock: Any = time.time,
         rng: Any = random.random,
         sample_tweets: list[TweetLike] | None = None,
+        stop_event: asyncio.Event | None = None,
     ) -> None:
         self._config = config
         self._state = state
@@ -79,6 +82,7 @@ class PluginApp:
         self._secrets = secrets or set()
         self._clock = clock
         self._rng = rng
+        self._stop_event = stop_event
         self._backoff = Backoff(
             config.backoff.initial_seconds,
             config.backoff.max_seconds,
@@ -210,6 +214,16 @@ class PluginApp:
         tz = get_tz(config.fetch.timezone)
         while True:
             result = await self.run_cycle()
+            if result.halt_reason:
+                logger.error(
+                    "%s circuit-breaker engaged (%s): %s; staying idle without further X requests "
+                    "until manual unlock and container restart",
+                    PLUGIN_NAME,
+                    result.halt_reason,
+                    result.error_message or "manual intervention required",
+                )
+                await self._wait_until_stopped()
+                return
             if not result.failures:
                 self._backoff.record_success()
             quiet = is_quiet_now(datetime.now(tz), config.fetch.quiet_hours, config.fetch.active_hours)
@@ -229,10 +243,15 @@ class PluginApp:
             )
             await asyncio.sleep(delay)
 
+    async def _wait_until_stopped(self) -> None:
+        """静默挂起等待外部停止/重启信号，避免 Docker restart: unless-stopped 陷入重启循环。"""
+        event = self._stop_event if self._stop_event is not None else asyncio.Event()
+        await event.wait()
+
     # ---------- 内部组件 ----------
 
     async def _collect_tweets(self, result: CycleResult) -> dict[str, dict]:
-        """按当前计划逐源拉取；单源失败只记录，不影响其余来源。"""
+        """按当前计划逐源拉取；普通单源失败只记录，账号锁定/封禁立即熔断本轮。"""
         grouped: dict[str, dict] = {}
         if self._dry_run:
             grouped[SAMPLE_ORIGIN_KEY] = {"label": SAMPLE_ORIGIN_LABEL, "tweets": list(self._sample_tweets)}
@@ -255,6 +274,16 @@ class PluginApp:
                 else:
                     tweets = await self._fetcher.fetch_search(ref)
             except FetchError as exc:
+                if exc.kind in FATAL_ACCOUNT_KINDS:
+                    result.failures.append((origin_key, exc.kind))
+                    result.halt_reason = exc.kind
+                    logger.error(
+                        "fetch %s hit fatal account status (%s): %s — aborting remaining sources",
+                        origin_key,
+                        exc.kind,
+                        redact_text(str(exc), self._secrets),
+                    )
+                    break
                 delay = self._backoff.record_failure(exc.kind)
                 result.failure_delay = max(result.failure_delay, delay)
                 result.failures.append((origin_key, exc.kind))
@@ -304,7 +333,9 @@ class PluginApp:
         fetch_successes: int,
         ingest_error: str = "",
     ) -> None:
-        if result.failures and fetch_successes == 0:
+        if result.halt_reason:
+            result.status = "error"
+        elif result.failures and fetch_successes == 0:
             result.status = "error"
         elif self._backoff.auth_exceeded():
             result.status = "error"
@@ -315,14 +346,25 @@ class PluginApp:
 
         messages: list[str] = []
         kinds = {kind for _, kind in result.failures}
+        if "account_locked" in kinds:
+            messages.append(
+                "X account locked (AccountLocked / challenge required) — "
+                "halting fetches; unlock account in browser, refresh cookies if needed, and restart container"
+            )
+        if "account_suspended" in kinds:
+            messages.append(
+                "X account suspended (AccountSuspended) — "
+                "halting fetches; switch backup account/cookies and restart container"
+            )
         if "auth" in kinds:
             messages.append("upstream rejected session cookies — refresh auth_token/ct0")
         if "blocked" in kinds:
             messages.append("upstream blocked requests (possible Cloudflare challenge)")
         if "rate_limit" in kinds:
             messages.append("upstream rate limit hit; backing off")
+        known_kinds = {"account_locked", "account_suspended", "auth", "blocked", "rate_limit"}
         transient_count = len(result.failures) - sum(
-            1 for _, kind in result.failures if kind in ("auth", "blocked", "rate_limit")
+            1 for _, kind in result.failures if kind in known_kinds
         )
         if transient_count:
             messages.append(f"{transient_count} source(s) failed transiently")

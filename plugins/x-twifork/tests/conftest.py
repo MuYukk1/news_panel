@@ -87,6 +87,7 @@ class FakeFetcher:
 
     async def resolve_user_id(self, account: str) -> str:
         clean = account.lstrip("@")
+        self.calls.append(("resolve", clean))
         value = self.account_results.get(clean)
         if isinstance(value, Exception):
             raise value
