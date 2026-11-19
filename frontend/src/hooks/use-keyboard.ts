@@ -160,6 +160,18 @@ export function useKeyboardShortcuts() {
       }
 
       if (pendingPrefixRef.current === "g") {
+        if (key === "o") {
+          event.preventDefault();
+          state.navigate({ to: "/overview" });
+          resetPrefix();
+          return;
+        }
+        if (key === "h") {
+          event.preventDefault();
+          state.navigate({ to: "/sources" });
+          resetPrefix();
+          return;
+        }
         if (key === "u") {
           event.preventDefault();
           state.selectTopLevelFilter("unread");

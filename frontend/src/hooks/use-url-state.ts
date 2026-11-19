@@ -1,10 +1,14 @@
-import { parseTriageSearch } from "@/lib/triage-search";
 import {
+  parseTriageSearch,
+  type TriageSearch,
+} from "@/lib/triage-search";
+import {
+  useLocation,
   useNavigate,
   useParams,
   useSearch,
 } from "@tanstack/react-router";
-import { useCallback } from "react";
+import { useCallback, useMemo } from "react";
 import {
   defaultArticleFilter,
   isArticleFilter,
@@ -16,6 +20,7 @@ export type { ArticleFilter } from "@/lib/article-filter";
 
 export function useUrlState() {
   const navigate = useNavigate();
+  const { pathname } = useLocation();
   const params = useParams({ strict: false }) as {
     filter?: string;
     feedId?: string;
@@ -31,9 +36,12 @@ export function useUrlState() {
       ? params.filter
       : defaultArticleFilter;
 
+  const triageSearch = useMemo(() => parseTriageSearch(search), [search]);
+
   const selectedFeedId = routeFeedId;
   const selectedGroupId = routeGroupId;
   const articleFilter = routeFilter;
+  const isOverviewRoute = pathname === "/overview";
 
   const navigateToList = useCallback(
     ({
@@ -41,19 +49,31 @@ export function useUrlState() {
       feedId,
       groupId,
       articleId,
+      triagePatch,
+      resetTriage = false,
       replace,
     }: {
       filter?: ArticleFilter;
       feedId?: number | null;
       groupId?: number | null;
       articleId?: number | null;
+      triagePatch?: Partial<Omit<TriageSearch, "article">>;
+      resetTriage?: boolean;
       replace?: boolean;
     } = {}) => {
       const nextFilter = filter ?? articleFilter;
       const nextFeedId = feedId === undefined ? selectedFeedId : feedId;
       const nextGroupId = groupId === undefined ? selectedGroupId : groupId;
-      const nextArticleId = articleId === undefined ? selectedArticleId : articleId;
-      const nextSearch = { ...parseTriageSearch(search), article: nextArticleId ?? undefined };
+      const nextArticleId =
+        articleId === undefined ? selectedArticleId : articleId;
+      const baseSearch: TriageSearch = resetTriage
+        ? {}
+        : parseTriageSearch(search);
+      const nextSearch: TriageSearch = {
+        ...baseSearch,
+        ...triagePatch,
+        article: nextArticleId ?? undefined,
+      };
 
       if (nextGroupId !== null) {
         navigate({
@@ -122,6 +142,19 @@ export function useUrlState() {
 
   const setSelectedArticle = useCallback(
     (articleId: number | null) => {
+      if (isOverviewRoute) {
+        const nextSearch: TriageSearch = {
+          ...parseTriageSearch(search),
+          article: articleId ?? undefined,
+        };
+        navigate({
+          to: "/overview",
+          search: nextSearch,
+          replace: articleId === null ? true : selectedArticleId !== null,
+        });
+        return;
+      }
+
       if (articleId === null) {
         navigateToList({ articleId: null, replace: true });
         return;
@@ -132,7 +165,7 @@ export function useUrlState() {
         replace: selectedArticleId !== null,
       });
     },
-    [navigateToList, selectedArticleId],
+    [isOverviewRoute, navigate, navigateToList, search, selectedArticleId],
   );
 
   const setArticleFilter = useCallback(
@@ -145,13 +178,34 @@ export function useUrlState() {
     [navigateToList],
   );
 
+  const setTriageSearch = useCallback(
+    (
+      patch: Partial<Omit<TriageSearch, "article">>,
+      options?: { reset?: boolean; filter?: ArticleFilter },
+    ) => {
+      navigateToList({
+        filter: options?.filter,
+        triagePatch: patch,
+        resetTriage: options?.reset ?? false,
+        articleId: null,
+        replace: true,
+      });
+    },
+    [navigateToList],
+  );
+
   const selectTopLevelFilter = useCallback(
-    (filter: ArticleFilter) => {
+    (
+      filter: ArticleFilter,
+      triagePatch?: Partial<Omit<TriageSearch, "article">>,
+    ) => {
       navigateToList({
         filter,
         feedId: null,
         groupId: null,
         articleId: null,
+        resetTriage: true,
+        triagePatch,
       });
     },
     [navigateToList],
@@ -166,10 +220,13 @@ export function useUrlState() {
     selectedGroupId,
     selectedArticleId,
     articleFilter,
+    triageSearch,
+    isOverviewRoute,
     setSelectedFeed,
     setSelectedGroup,
     setSelectedArticle,
     setArticleFilter,
+    setTriageSearch,
     selectTopLevelFilter,
     selectAll,
   };

@@ -27,6 +27,7 @@ type ItemsMutationContext = {
   prevBookmarkLists: Array<
     [readonly unknown[], BookmarksInfiniteData | undefined]
   >;
+  prevOverviewTop: Item[] | undefined;
 };
 
 function buildListItemsParams(
@@ -37,7 +38,8 @@ function buildListItemsParams(
   const params: ListItemsParams = {
     limit: pageSize,
     order_by: "pub_date",
-    triage_status: filters.triageStatus,
+    triage_status:
+      filters.triageStatus === "all" ? undefined : filters.triageStatus,
     domain: filters.domain,
     priority: filters.priority,
     min_score: filters.minScore,
@@ -71,7 +73,49 @@ export const itemQueries = {
         return res.data;
       },
     }),
+  overviewCount: (key: "unread-kept" | "kept" | "filtered") =>
+    queryOptions({
+      queryKey: queryKeys.items.overviewCount(key),
+      queryFn: async () => {
+        const params: ListItemsParams =
+          key === "unread-kept"
+            ? { unread: true, triage_status: "kept", limit: 1 }
+            : key === "kept"
+              ? { triage_status: "kept", limit: 1 }
+              : { triage_status: "filtered", limit: 1 };
+        const res = await itemAPI.list(params);
+        return res.total;
+      },
+      staleTime: 30_000,
+    }),
+  overviewTop: (limit = 50) =>
+    queryOptions({
+      queryKey: queryKeys.items.overviewTop(limit),
+      queryFn: async () => {
+        const res = await itemAPI.list({
+          triage_status: "kept",
+          limit,
+          order_by: "pub_date",
+        });
+        return res.data;
+      },
+      staleTime: 30_000,
+    }),
 };
+
+export function useOverviewCounts() {
+  const unreadKept = useQuery(itemQueries.overviewCount("unread-kept"));
+  const kept = useQuery(itemQueries.overviewCount("kept"));
+  const filtered = useQuery(itemQueries.overviewCount("filtered"));
+  return { unreadKept, kept, filtered };
+}
+
+export function useOverviewKeptItems(limit = 50, enabled = true) {
+  return useQuery({
+    ...itemQueries.overviewTop(limit),
+    enabled,
+  });
+}
 
 export function useItems(filters: ItemFilters, enabled = true) {
   const articlePageSize = usePreferencesStore((state) => state.articlePageSize);
@@ -101,6 +145,7 @@ function snapshotItemsMutationState(
     prevBookmarkLists: qc.getQueriesData<BookmarksInfiniteData>({
       queryKey: queryKeys.bookmarks.lists(),
     }),
+    prevOverviewTop: qc.getQueryData<Item[]>(queryKeys.items.overviewTop(50)),
   };
 }
 
@@ -168,6 +213,20 @@ function applyOptimisticItemReadState(
     );
   }
 
+  // Mirror the read-state change into overview top-items cache as well.
+  qc.setQueryData<Item[]>(queryKeys.items.overviewTop(50), (old) => {
+    if (!old) return old;
+    let changed = false;
+    const next = old.map((item) => {
+      if (idSet.has(item.id) && item.unread !== targetUnread) {
+        changed = true;
+        return { ...item, unread: targetUnread };
+      }
+      return item;
+    });
+    return changed ? next : old;
+  });
+
   // Mirror the read-state change into bookmark caches so the starred view (which
   // renders bookmarks as articles) reflects the toggle without a refetch.
   qc.setQueriesData<BookmarksInfiniteData>(
@@ -218,6 +277,10 @@ function rollbackItemsMutation(
   for (const [key, data] of context.prevBookmarkLists) {
     qc.setQueryData(key, data);
   }
+
+  if (context.prevOverviewTop) {
+    qc.setQueryData(queryKeys.items.overviewTop(50), context.prevOverviewTop);
+  }
 }
 
 function useSetItemsReadState(targetUnread: boolean) {
@@ -247,7 +310,10 @@ function useSetItemsReadState(targetUnread: boolean) {
       rollbackItemsMutation(qc, context);
     },
     onSettled: async () => {
-      await qc.invalidateQueries({ queryKey: queryKeys.feeds.all });
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: queryKeys.feeds.all }),
+        qc.invalidateQueries({ queryKey: queryKeys.items.overview() }),
+      ]);
     },
   });
 }

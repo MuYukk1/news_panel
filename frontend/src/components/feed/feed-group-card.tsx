@@ -61,11 +61,11 @@ export function FeedGroupCard({
   t,
 }: FeedGroupCardProps) {
   return (
-    <div className="overflow-hidden rounded-lg border">
+    <div className="np-glass-sm overflow-hidden">
       <div
         className={cn(
-          "group/header flex items-center justify-between bg-muted/50 px-3.5 py-2.5",
-          isCollapsed ? "rounded-lg" : "rounded-t-lg",
+          "group/header flex items-center justify-between bg-[var(--glass-soft)] px-3.5 py-2.5",
+          isCollapsed ? "rounded-2xl" : "rounded-t-2xl",
         )}
       >
         {isEditing ? (

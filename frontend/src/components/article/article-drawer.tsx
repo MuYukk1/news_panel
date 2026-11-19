@@ -1,39 +1,53 @@
-import { TriageMetadata } from "./triage-metadata";
+import { useMemo, useState } from "react";
 import {
-  Circle,
-  CircleCheck,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
+  Circle,
+  CircleCheck,
   ExternalLink,
+  Eye,
+  Heart,
+  MessageCircle,
+  Repeat2,
+  Sparkles,
   Star,
   X,
 } from "lucide-react";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { FeedFavicon } from "@/components/feed/feed-favicon";
+import { ItemTimestamps } from "@/components/panel/item-timestamps";
+import {
+  extractRawMeta,
+  formatCompactNumber,
+  selectTopPicks,
+} from "@/components/panel/panel-utils";
+import { useArticleList } from "@/hooks/use-article-list";
+import { useAutoMarkRead } from "@/hooks/use-auto-mark-read";
+import { useArticleNavigation } from "@/hooks/use-keyboard";
 import { useUrlState } from "@/hooks/use-url-state";
 import type { Item } from "@/lib/api";
-import {
-  useItem,
-  useMarkItemsRead,
-  useMarkItemsUnread,
-} from "@/queries/items";
-import { useFeedLookup } from "@/queries/feeds";
+import { getFaviconUrl } from "@/lib/api/favicon";
+import { processArticleContent } from "@/lib/content";
+import { useI18n } from "@/lib/i18n";
+import { toSafeExternalUrl } from "@/lib/safe-url";
+import { cn } from "@/lib/utils";
 import {
   useCreateBookmark,
   useDeleteBookmark,
 } from "@/queries/bookmarks";
-import { useArticleList } from "@/hooks/use-article-list";
-import { useArticleNavigation } from "@/hooks/use-keyboard";
-import { useAutoMarkRead } from "@/hooks/use-auto-mark-read";
-import { useI18n } from "@/lib/i18n";
-import { cn, formatDate } from "@/lib/utils";
-import { processArticleContent } from "@/lib/content";
-import { getFaviconUrl } from "@/lib/api/favicon";
-import { FeedFavicon } from "@/components/feed/feed-favicon";
-import { toSafeExternalUrl } from "@/lib/safe-url";
-import { useReadStatePins, usePreferencesStore } from "@/store";
+import { useFeedLookup } from "@/queries/feeds";
+import {
+  useItem,
+  useMarkItemsRead,
+  useMarkItemsUnread,
+  useOverviewKeptItems,
+} from "@/queries/items";
+import { usePreferencesStore, useReadStatePins } from "@/store";
 import { autoMarkReadDelayMs } from "@/store/preferences";
+import { TriageMetadata } from "./triage-metadata";
 
 export function ArticleDrawer() {
   const { t } = useI18n();
@@ -44,6 +58,7 @@ export function ArticleDrawer() {
     selectedFeedId,
     selectedGroupId,
     articleFilter,
+    isOverviewRoute,
   } = useUrlState();
   const { getFeedById } = useFeedLookup();
 
@@ -52,7 +67,20 @@ export function ArticleDrawer() {
       feedId: selectedFeedId,
       groupId: selectedGroupId,
       articleFilter,
+      enabled: !isOverviewRoute && selectedArticleId !== null,
     });
+
+  const overviewKeptQuery = useOverviewKeptItems(50, isOverviewRoute);
+  const overviewTopPicks = useMemo(
+    () => selectTopPicks(overviewKeptQuery.data ?? [], 5),
+    [overviewKeptQuery.data],
+  );
+
+  const activeArticles = isOverviewRoute ? overviewTopPicks : articles;
+  const articleIds = useMemo(
+    () => activeArticles.map((a) => a.id),
+    [activeArticles],
+  );
 
   const markRead = useMarkItemsRead();
   const markUnread = useMarkItemsUnread();
@@ -65,51 +93,66 @@ export function ArticleDrawer() {
     articleFilter,
   });
 
-  const articleIds = articles.map((a) => a.id);
-
   const storeArticle = selectedArticleId
-    ? (articles.find((i) => i.id === selectedArticleId) ?? null)
+    ? (activeArticles.find((i) => i.id === selectedArticleId) ?? null)
     : null;
 
   const shouldFetchArticle =
     selectedArticleId !== null &&
     selectedArticleId > 0 &&
-    (isStarredMode || storeArticle === null);
+    ((!isOverviewRoute && isStarredMode) || storeArticle === null);
   const { data: fetchedArticle } = useItem(
     selectedArticleId,
     shouldFetchArticle,
   );
 
   const article: Item | null =
-    (isStarredMode ? fetchedArticle ?? storeArticle : storeArticle ?? fetchedArticle) ??
-    null;
+    (!isOverviewRoute && isStarredMode
+      ? (fetchedArticle ?? storeArticle)
+      : (storeArticle ?? fetchedArticle)) ?? null;
+
   // Read state comes from the in-hand row (list/bookmark cache), not the
   // detail refetch: in starred mode the fetched detail can disagree with the
   // row, and the header toggle, the auto-mark timer, and the veto must all
   // watch the same unread bit or a manual mark-unread gets overwritten.
   const readArticle = storeArticle ?? fetchedArticle ?? null;
   const canToggleRead = readArticle !== null && readArticle.id > 0;
+  const hasItemFetchedTime =
+    article !== null &&
+    article.id > 0 &&
+    (!isStarredMode || fetchedArticle !== undefined);
   const feed = article ? getFeedById(article.feed_id) : null;
   const bookmark = article ? getBookmarkByItemId(article.id) : null;
   const starred = article ? isItemStarred(article.id) : false;
   const safeArticleLink = article ? toSafeExternalUrl(article.link) : null;
 
+  const [originalToggleState, setOriginalToggleState] = useState<{
+    articleId: number;
+    open: boolean;
+  } | null>(null);
+
+  const defaultOriginalOpen = Boolean(
+    article && (!article.ai_summary.trim() || !article.source_id),
+  );
+  const isOriginalOpen =
+    article && originalToggleState?.articleId === article.id
+      ? originalToggleState.open
+      : defaultOriginalOpen;
+
   const autoMarkRead = usePreferencesStore((s) => s.autoMarkRead);
   const autoMarkDelayMs = autoMarkReadDelayMs(autoMarkRead);
 
-  // The target is not gated on the setting: null means the drawer left the
-  // article, which is exactly the event that must clear the veto. "Feature
-  // off" travels as delayMs === null instead.
   useAutoMarkRead({
     target:
       readArticle && readArticle.id > 0
         ? { id: readArticle.id, unread: readArticle.unread }
         : null,
     delayMs: autoMarkDelayMs,
-    // mutate and pinRead must share one synchronous turn (see hook docs).
     onMarkRead: (id) => {
       markRead.mutate([id]);
-      pinRead([id]);
+      if (!isOverviewRoute) {
+        pinRead([id]);
+      }
     },
     hasPendingMutation: () => markRead.isPending || markUnread.isPending,
   });
@@ -124,14 +167,15 @@ export function ArticleDrawer() {
     if (!readArticle || !canToggleRead) return;
     try {
       if (readArticle.unread) {
-        // Pin before the request: the optimistic unread flip drops the row
-        // from the unread list (and with it this drawer's content) until
-        // the pin lands — the await would flash a blank pane.
-        pinRead([readArticle.id]);
+        if (!isOverviewRoute) {
+          pinRead([readArticle.id]);
+        }
         await markRead.mutateAsync([readArticle.id]);
       } else {
         await markUnread.mutateAsync([readArticle.id]);
-        unpinRead([readArticle.id]);
+        if (!isOverviewRoute) {
+          unpinRead([readArticle.id]);
+        }
       }
     } catch (error) {
       console.error("Failed to toggle read status:", error);
@@ -142,9 +186,9 @@ export function ArticleDrawer() {
     if (!article) return;
     try {
       if (starred) {
-        const bookmark = getBookmarkByItemId(article.id);
-        if (bookmark) {
-          await deleteBookmark.mutateAsync(bookmark.id);
+        const existingBookmark = getBookmarkByItemId(article.id);
+        if (existingBookmark) {
+          await deleteBookmark.mutateAsync(existingBookmark.id);
         }
       } else {
         await createBookmark.mutateAsync(article);
@@ -184,45 +228,102 @@ export function ArticleDrawer() {
       onOpenOriginal: handleOpenOriginal,
     });
 
+  const rawMeta = useMemo(
+    () => (article ? extractRawMeta(article.raw_meta) : null),
+    [article],
+  );
+
+  const metricCells = useMemo(() => {
+    if (!rawMeta || !rawMeta.hasMetrics) return [];
+    const cells: Array<{
+      key: string;
+      label: string;
+      value: number;
+      Icon: typeof Heart;
+    }> = [];
+    if (rawMeta.metrics.likes !== undefined) {
+      cells.push({
+        key: "likes",
+        label: t("panel.drawer.metricLikes"),
+        value: rawMeta.metrics.likes,
+        Icon: Heart,
+      });
+    }
+    if (rawMeta.metrics.retweets !== undefined) {
+      cells.push({
+        key: "retweets",
+        label: t("panel.drawer.metricRetweets"),
+        value: rawMeta.metrics.retweets,
+        Icon: Repeat2,
+      });
+    }
+    if (rawMeta.metrics.replies !== undefined) {
+      cells.push({
+        key: "replies",
+        label: t("panel.drawer.metricReplies"),
+        value: rawMeta.metrics.replies,
+        Icon: MessageCircle,
+      });
+    }
+    if (rawMeta.metrics.views !== undefined) {
+      cells.push({
+        key: "views",
+        label: t("panel.drawer.metricViews"),
+        value: rawMeta.metrics.views,
+        Icon: Eye,
+      });
+    }
+    return cells;
+  }, [rawMeta, t]);
+
   return (
     <Sheet open={selectedArticleId !== null} onOpenChange={handleOpenChange}>
       <SheetContent
         side="right"
-        className="data-[side=right]:w-full data-[side=right]:sm:max-w-[max(840px,60vw)] p-0"
+        className="np-drawer-glass border-0 p-0 data-[side=right]:w-full data-[side=right]:sm:max-w-[max(740px,54vw)]"
         showCloseButton={false}
       >
         {article && (
           <div className="flex h-full flex-col">
-            {/* Header */}
-            <div className="flex items-center justify-between border-b px-4 py-3 sm:px-6">
-              <div className="flex items-center gap-2">
+            {/* Sticky Glass Header Action Bar */}
+            <div className="np-header-glass flex shrink-0 items-center justify-between gap-2 px-4 py-3 sm:px-6">
+              <div className="flex flex-wrap items-center gap-1.5">
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={handleToggleRead}
                   disabled={!canToggleRead}
-                  className="h-auto gap-1.5 px-2.5 py-1.5 text-[13px] font-medium text-muted-foreground"
+                  className="h-8 gap-1.5 rounded-xl border-[var(--glass-border)] bg-[var(--glass-panel)] px-2.5 text-xs font-medium text-[var(--glass-ink)]"
                 >
                   {(readArticle?.unread ?? false) ? (
-                    <Circle className="h-4 w-4 text-muted-foreground" />
+                    <Circle className="h-3.5 w-3.5 text-[var(--glass-sub)]" />
                   ) : (
-                    <CircleCheck className="h-4 w-4 text-primary" />
+                    <CircleCheck className="h-3.5 w-3.5 text-[var(--glass-acc)]" />
                   )}
                   {(readArticle?.unread ?? false)
                     ? t("article.action.markRead")
                     : t("article.action.markUnread")}
                 </Button>
+
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={handleToggleStar}
-                  className="h-auto gap-1.5 px-2.5 py-1.5 text-[13px] font-medium text-muted-foreground"
+                  className={cn(
+                    "h-8 gap-1.5 rounded-xl border-[var(--glass-border)] bg-[var(--glass-panel)] px-2.5 text-xs font-medium",
+                    starred
+                      ? "text-amber-600 dark:text-amber-400"
+                      : "text-[var(--glass-ink)]",
+                  )}
                 >
                   <Star
-                    className={`h-4 w-4 ${starred ? "fill-current text-amber-500" : ""}`}
+                    className={cn("h-3.5 w-3.5", starred && "fill-current")}
                   />
-                  {starred ? t("article.action.unstar") : t("article.action.star")}
+                  {starred
+                    ? t("article.action.unstar")
+                    : t("article.action.star")}
                 </Button>
+
                 {safeArticleLink ? (
                   <a
                     href={safeArticleLink}
@@ -230,10 +331,10 @@ export function ArticleDrawer() {
                     rel="noopener noreferrer"
                     className={cn(
                       buttonVariants({ variant: "outline", size: "sm" }),
-                      "h-auto gap-1.5 px-2.5 py-1.5 text-[13px] font-medium text-muted-foreground",
+                      "h-8 gap-1.5 rounded-xl border-[var(--glass-border)] bg-[var(--glass-panel)] px-2.5 text-xs font-medium text-[var(--glass-ink)]",
                     )}
                   >
-                    <ExternalLink className="h-4 w-4" />
+                    <ExternalLink className="h-3.5 w-3.5" />
                     {t("article.action.original")}
                   </a>
                 ) : (
@@ -241,96 +342,232 @@ export function ArticleDrawer() {
                     variant="outline"
                     size="sm"
                     disabled
-                    className="h-auto gap-1.5 px-2.5 py-1.5 text-[13px] font-medium text-muted-foreground"
+                    className="h-8 gap-1.5 rounded-xl border-[var(--glass-border)] bg-[var(--glass-panel)] px-2.5 text-xs font-medium text-[var(--glass-faint)]"
                   >
-                    <ExternalLink className="h-4 w-4" />
+                    <ExternalLink className="h-3.5 w-3.5" />
                     {t("article.action.original")}
                   </Button>
                 )}
               </div>
 
-              <SheetTitle className="sr-only">{article.title || article.content.slice(0, 100)}</SheetTitle>
+              <SheetTitle className="sr-only">
+                {article.title || article.content.slice(0, 100)}
+              </SheetTitle>
 
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                onClick={() => setSelectedArticle(null)}
-                aria-label={t("common.cancel")}
-              >
-                <X className="h-[18px] w-[18px] text-muted-foreground" />
-              </Button>
+              <div className="flex shrink-0 items-center gap-1">
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  onClick={goToPrevious}
+                  disabled={!hasPrevious()}
+                  aria-label={t("common.previous")}
+                  title={t("common.previous")}
+                  className="h-8 w-8 rounded-xl"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  onClick={goToNext}
+                  disabled={!hasNext()}
+                  aria-label={t("common.next")}
+                  title={t("common.next")}
+                  className="h-8 w-8 rounded-xl"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  onClick={() => setSelectedArticle(null)}
+                  aria-label={t("common.cancel")}
+                  className="h-8 w-8 rounded-xl"
+                >
+                  <X className="h-4 w-4 text-[var(--glass-sub)]" />
+                </Button>
+              </div>
             </div>
 
-            {/* Content */}
+            {/* Scrollable Body */}
             <ScrollArea className="min-h-0 flex-1">
-              <article className="min-w-0 px-5 py-6 sm:px-12 sm:py-8">
+              <article className="min-w-0 space-y-5 px-5 py-6 sm:px-10 sm:py-7">
+                {/* 1. Metadata Strip */}
+                <TriageMetadata article={article} />
+
+                {/* 2. Title & Source / Author */}
                 <div className="space-y-3">
-                  <h1 className="text-[28px] font-bold leading-[1.3]">
-                    {article.title}
+                  <h1 className="text-[22px] font-bold leading-[1.35] tracking-tight text-[var(--glass-ink)] sm:text-[26px]">
+                    {article.title || article.content.slice(0, 100)}
                   </h1>
-                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+
+                  <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5 text-xs text-[var(--glass-sub)]">
+                    {article.author && (
+                      <span className="font-semibold text-[var(--glass-ink)]">
+                        {article.author}
+                      </span>
+                    )}
+
                     {article.feed_id > 0 ? (
                       <button
                         type="button"
                         onClick={handleOpenFeed}
-                        className="flex max-w-48 items-center gap-1.5 rounded bg-muted px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent"
+                        className="inline-flex max-w-52 items-center gap-1.5 rounded-lg bg-[var(--glass-soft)] px-2 py-1 font-medium text-[var(--glass-sub)] transition-colors hover:bg-[var(--glass-soft-hover)] hover:text-[var(--glass-ink)]"
                       >
-                        {feed && (
+                        {feed && !article.source_id && (
                           <FeedFavicon
                             src={getFaviconUrl(feed.link, feed.site_url)}
                             className="h-3.5 w-3.5 rounded-sm"
                           />
                         )}
-                        <span className="truncate hover:underline">
-                          {feed?.name ?? bookmark?.feed_name ?? t("common.unknown")}
+                        <span className="truncate">
+                          {article.source_id ||
+                            feed?.name ||
+                            bookmark?.feed_name ||
+                            t("common.unknown")}
                         </span>
                       </button>
                     ) : (
-                      <span className="flex max-w-48 items-center gap-1.5 rounded bg-muted px-2 py-1 text-xs font-medium text-muted-foreground">
+                      <span className="inline-flex max-w-52 items-center gap-1.5 rounded-lg bg-[var(--glass-soft)] px-2 py-1 font-medium text-[var(--glass-sub)]">
                         <span className="truncate">
-                          {bookmark?.feed_name ?? t("common.unknown")}
+                          {article.source_id ||
+                            bookmark?.feed_name ||
+                            t("common.unknown")}
                         </span>
                       </span>
                     )}
-                    <span className="text-muted-foreground">
-                      {formatDate(article.pub_date)}
-                    </span>
-                    {safeArticleLink ? (
+
+                    <ItemTimestamps
+                      item={article}
+                      showFetched={hasItemFetchedTime}
+                      variant="detailed"
+                    />
+
+                    {safeArticleLink && (
                       <a
                         href={safeArticleLink}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="truncate text-primary hover:underline"
+                        className="truncate font-medium text-[var(--glass-acc)] hover:underline"
                       >
                         {getLinkDomain(safeArticleLink)}
                       </a>
-                    ) : null}
+                    )}
                   </div>
                 </div>
 
-                <TriageMetadata article={article} />
-                {article.source_id ? <div className="mt-6 whitespace-pre-wrap break-words">{article.content}</div> : <div
-                  className="typeset typeset-article mt-6 min-w-0 max-w-none"
-                  dangerouslySetInnerHTML={{
-                    __html: processArticleContent(
-                      article.content,
-                      safeArticleLink ?? undefined,
-                    ),
-                  }}
-                />}
+                {/* 3. Highlighted AI Summary Glass Card */}
+                {article.ai_summary.trim() && (
+                  <section className="rounded-2xl border border-[var(--glass-acc)]/25 bg-[var(--glass-soft)] p-4 sm:p-5">
+                    <div className="mb-2 flex items-center gap-2 text-xs font-bold tracking-wide text-[var(--glass-acc)]">
+                      <Sparkles className="h-3.5 w-3.5" />
+                      <span>{t("panel.drawer.aiSummaryTitle")}</span>
+                    </div>
+                    <p className="text-[14.5px] leading-[1.75] text-[var(--glass-ink)]">
+                      {article.ai_summary}
+                    </p>
+                  </section>
+                )}
+
+                {/* 4. Smooth Collapsible Original Content Section */}
+                <section className="overflow-hidden rounded-2xl border border-[var(--glass-inner-line)] bg-[var(--glass-panel)]">
+                  <button
+                    type="button"
+                    aria-expanded={isOriginalOpen}
+                    onClick={() =>
+                      setOriginalToggleState({
+                        articleId: article.id,
+                        open: !isOriginalOpen,
+                      })
+                    }
+                    className="flex w-full items-center justify-between gap-2 px-4 py-3 text-left text-xs font-semibold text-[var(--glass-sub)] transition-colors hover:bg-[var(--glass-soft)] hover:text-[var(--glass-ink)]"
+                  >
+                    <span>{t("panel.drawer.originalContentTitle")}</span>
+                    <span className="inline-flex items-center gap-1 text-[11px] font-medium text-[var(--glass-faint)]">
+                      {isOriginalOpen
+                        ? t("panel.drawer.collapse")
+                        : t("panel.drawer.expand")}
+                      <ChevronDown
+                        className={cn(
+                          "h-4 w-4 transition-transform duration-200",
+                          isOriginalOpen && "rotate-180",
+                        )}
+                      />
+                    </span>
+                  </button>
+
+                  <div className="np-orig-collapse" data-open={isOriginalOpen}>
+                    <div>
+                      <div className="border-t border-[var(--glass-inner-line)] px-4 py-4 sm:px-5">
+                        {article.source_id ? (
+                          <div className="whitespace-pre-wrap break-words text-[14px] leading-[1.75] text-[var(--glass-ink)]">
+                            {article.content}
+                          </div>
+                        ) : (
+                          <div
+                            className="typeset typeset-article min-w-0 max-w-none"
+                            dangerouslySetInnerHTML={{
+                              __html: processArticleContent(
+                                article.content,
+                                safeArticleLink ?? undefined,
+                              ),
+                            }}
+                          />
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </section>
+
+                {/* 5. Conditional Engagement Metrics & Origin Label */}
+                {rawMeta && (rawMeta.hasMetrics || rawMeta.originLabel) && (
+                  <section className="rounded-2xl border border-[var(--glass-inner-line)] bg-[var(--glass-panel)] p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <h2 className="text-xs font-semibold text-[var(--glass-sub)]">
+                        {t("panel.drawer.engagementTitle")}
+                      </h2>
+                      {rawMeta.originLabel && (
+                        <span className="rounded-full bg-[var(--glass-soft)] px-2.5 py-0.5 text-[11px] font-medium text-[var(--glass-acc)]">
+                          {t("panel.drawer.originLabel", {
+                            label: rawMeta.originLabel,
+                          })}
+                        </span>
+                      )}
+                    </div>
+
+                    {metricCells.length > 0 && (
+                      <div className="mt-3 grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+                        {metricCells.map(({ key, label, value, Icon }) => (
+                          <div
+                            key={key}
+                            className="rounded-xl bg-[var(--glass-soft)] px-3 py-2.5 text-center"
+                          >
+                            <Icon className="mx-auto h-3.5 w-3.5 text-[var(--glass-acc)]" />
+                            <p className="mt-1 text-base font-bold tabular-nums text-[var(--glass-ink)]">
+                              {formatCompactNumber(value)}
+                            </p>
+                            <p className="text-[11px] text-[var(--glass-faint)]">
+                              {label}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </section>
+                )}
               </article>
             </ScrollArea>
 
-            {/* Footer - Navigation */}
-            <div className="flex items-center justify-between border-t px-4 py-3 sm:px-6">
+            {/* Footer Navigation */}
+            <div className="flex shrink-0 items-center justify-between border-t border-[var(--glass-inner-line)] px-4 py-3 sm:px-6">
               <Button
                 variant="outline"
                 size="sm"
                 onClick={goToPrevious}
                 disabled={!hasPrevious()}
-                className="h-auto gap-1.5 px-3 py-2 text-[13px] font-medium text-muted-foreground"
+                className="h-8 gap-1.5 rounded-xl border-[var(--glass-border)] bg-[var(--glass-panel)] px-3 text-xs font-medium text-[var(--glass-sub)]"
               >
-                <ChevronLeft className="h-4 w-4" />
+                <ChevronLeft className="h-3.5 w-3.5" />
                 {t("common.previous")}
               </Button>
               <Button
@@ -338,10 +575,10 @@ export function ArticleDrawer() {
                 size="sm"
                 onClick={goToNext}
                 disabled={!hasNext()}
-                className="h-auto gap-1.5 px-3 py-2 text-[13px] font-medium text-muted-foreground"
+                className="h-8 gap-1.5 rounded-xl border-[var(--glass-border)] bg-[var(--glass-panel)] px-3 text-xs font-medium text-[var(--glass-sub)]"
               >
                 {t("common.next")}
-                <ChevronRight className="h-4 w-4" />
+                <ChevronRight className="h-3.5 w-3.5" />
               </Button>
             </div>
           </div>

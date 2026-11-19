@@ -1,14 +1,14 @@
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { CheckCheck, Loader2 } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
+import { Loader2, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { TriageToolbar } from "@/components/panel/triage-toolbar";
+import { sortLoadedArticles } from "@/components/panel/panel-utils";
 import { ArticleItem } from "./article-item";
-import { ContentHeader } from "@/components/layout/content-header";
-import { SidebarTrigger } from "@/components/layout/sidebar-trigger";
 import { useArticleNavigation } from "@/hooks/use-keyboard";
-import { useUrlState, type ArticleFilter } from "@/hooks/use-url-state";
+import { useUrlState } from "@/hooks/use-url-state";
 import { useArticleList } from "@/hooks/use-article-list";
 import { useMarkItemsRead, useMarkItemsUnread } from "@/queries/items";
 import { useFeedLookup } from "@/queries/feeds";
@@ -20,26 +20,36 @@ import {
   articleListKey,
   useArticlePinsStore,
   useReadStatePins,
+  useUIStore,
 } from "@/store";
 import type { Item } from "@/lib/api";
 
 export function ArticleList() {
   const { t } = useI18n();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const setSearchOpen = useUIStore((s) => s.setSearchOpen);
+
   const {
     articleFilter,
     setArticleFilter,
+    triageSearch,
+    setTriageSearch,
     selectedFeedId,
     selectedGroupId,
     selectedArticleId,
     setSelectedArticle,
   } = useUrlState();
 
+  const [sortBy, setSortBy] = useState<"time" | "score">("time");
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
   const {
     articles,
     hasMore,
     isLoading,
     isLoadingMore,
+    isStarredMode,
     fetchNextPage,
     isItemStarred,
     getBookmarkByItemId,
@@ -65,24 +75,25 @@ export function ArticleList() {
   const pinsKey = articleListKey(selectedFeedId, selectedGroupId, articleFilter);
   const clearPins = useArticlePinsStore((s) => s.clearPins);
 
-  // Leaving this exact list (filter/feed/group change or unmount) commits the
-  // read markings: pinned rows stop being shown in the unread view. Only the
-  // list itself clears pins — the drawer stays mounted on other pages and must
-  // not commit on its own lifecycle.
   useEffect(() => {
     return () => {
       clearPins(pinsKey);
     };
   }, [pinsKey, clearPins]);
 
-  const articleIds = articles.map((a) => a.id);
+  const displayedArticles = useMemo(
+    () => sortLoadedArticles(articles, sortBy),
+    [articles, sortBy],
+  );
+
+  const articleIds = useMemo(
+    () => displayedArticles.map((a) => a.id),
+    [displayedArticles],
+  );
   useArticleNavigation(articleIds, {
     enabled: selectedArticleId === null,
   });
 
-  // When every loaded row has been read away (hidden from the unread view),
-  // keep pulling deeper pages instead of dead-ending on an empty list while
-  // the server still has unread items.
   useEffect(() => {
     if (isLoading || isLoadingMore) return;
     if (articles.length === 0 && hasMore) {
@@ -97,10 +108,31 @@ export function ArticleList() {
   } else if (selectedGroupId) {
     const group = groups.find((g) => g.id === selectedGroupId);
     title = group?.name ?? t("article.groupFallback");
+  } else if (triageSearch.triage_status === "filtered") {
+    title = t("panel.nav.filtered");
+  } else if (articleFilter === "unread") {
+    title = t("article.filter.unread");
+  } else if (articleFilter === "starred") {
+    title = t("article.filter.starred");
   }
 
-  const unreadCount = articles.filter((a) => a.unread).length;
+  const unreadCount = displayedArticles.filter((a) => a.unread).length;
   const hasNoFeeds = !isFeedsLoading && feeds.length === 0;
+  const hasActiveTriageFilters = Boolean(
+    triageSearch.domain ||
+      triageSearch.priority ||
+      (triageSearch.min_score !== undefined && triageSearch.min_score > 0) ||
+      (triageSearch.triage_status && triageSearch.triage_status !== "kept"),
+  );
+
+  const handleRefresh = useCallback(async () => {
+    setIsRefreshing(true);
+    try {
+      await queryClient.invalidateQueries();
+    } finally {
+      window.setTimeout(() => setIsRefreshing(false), 320);
+    }
+  }, [queryClient]);
 
   const handleToggleRead = useCallback(
     async (article: Item) => {
@@ -108,8 +140,6 @@ export function ArticleList() {
 
       try {
         if (article.unread) {
-          // Pin before the request so the optimistic unread flip cannot
-          // drop the row (still visible for undo) before the pin lands.
           pinRead([article.id]);
           await markItemsRead.mutateAsync([article.id]);
         } else {
@@ -143,7 +173,7 @@ export function ArticleList() {
   );
 
   const handleMarkAllAsRead = async () => {
-    const unreadIds = articles
+    const unreadIds = displayedArticles
       .filter((a) => a.unread && a.id > 0)
       .map((a) => a.id);
 
@@ -158,106 +188,107 @@ export function ArticleList() {
   };
 
   return (
-    <div className="flex h-full flex-col">
-      <ContentHeader>
-        <div className="flex min-w-0 items-center gap-1">
-          <SidebarTrigger />
-          <h2 className="truncate text-lg font-semibold">{title}</h2>
-        </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={handleMarkAllAsRead}
-          disabled={unreadCount === 0}
-          className="gap-1.5 text-xs"
-        >
-          <CheckCheck className="h-4 w-4" />
-          {t("article.list.markAllRead")}
-        </Button>
-      </ContentHeader>
+    <div className="flex h-full min-h-0 flex-col overflow-hidden">
+      <TriageToolbar
+        title={title}
+        articleFilter={articleFilter}
+        triageSearch={triageSearch}
+        sortBy={sortBy}
+        unreadCount={unreadCount}
+        isRefreshing={isRefreshing}
+        onChangeArticleFilter={setArticleFilter}
+        onUpdateTriage={setTriageSearch}
+        onChangeSortBy={setSortBy}
+        onOpenSearch={() => setSearchOpen(true)}
+        onRefresh={() => void handleRefresh()}
+        onMarkAllRead={() => void handleMarkAllAsRead()}
+      />
 
-      {/* Article area with filter tabs */}
-      <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden px-4 py-4 sm:px-6">
-        {/* Filter tabs - hidden when no articles exist */}
-        {!hasNoFeeds && (articles.length > 0 || articleFilter !== "all") && (
-          <Tabs
-            value={articleFilter}
-            onValueChange={(v) => setArticleFilter(v as ArticleFilter)}
-          >
-            <TabsList>
-              <TabsTrigger value="all">{t("article.filter.all")}</TabsTrigger>
-              <TabsTrigger value="unread">{t("article.filter.unread")}</TabsTrigger>
-              <TabsTrigger value="starred">
-                {t("article.filter.starred")}
-              </TabsTrigger>
-            </TabsList>
-          </Tabs>
-        )}
-
-            {/* Article list */}
-        <ScrollArea className="min-h-0 flex-1">
-          <div>
-            {isLoading || (articles.length === 0 && hasMore) ? (
-              <div className="space-y-2 p-2">
+      <ScrollArea className="min-h-0 flex-1">
+        <div className="mx-auto w-full max-w-[1440px] px-4 pb-8 pt-1 sm:px-6">
+          <div className="np-glass overflow-hidden">
+            {isLoading || (displayedArticles.length === 0 && hasMore) ? (
+              <div className="space-y-3 p-4 sm:p-5">
                 {[1, 2, 3, 4, 5].map((i) => (
                   <div
                     key={i}
-                    className="h-24 animate-pulse rounded-md bg-accent"
+                    className="h-24 animate-pulse rounded-2xl bg-[var(--glass-soft)]"
                   />
                 ))}
               </div>
-            ) : articles.length === 0 ? (
-              hasNoFeeds ? (
-                <div className="flex flex-col items-center justify-center gap-3 py-12 text-center">
-                  <p className="text-sm text-muted-foreground">
+            ) : displayedArticles.length === 0 ? (
+              hasNoFeeds && !hasActiveTriageFilters ? (
+                <div className="flex flex-col items-center justify-center gap-3 px-6 py-16 text-center">
+                  <p className="text-sm font-medium text-[var(--glass-sub)]">
                     {t("article.list.noFeeds")}
                   </p>
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => navigate({ to: "/feeds" })}
+                    onClick={() => void navigate({ to: "/feeds" })}
                   >
                     {t("article.list.openFeedManagement")}
                   </Button>
                 </div>
               ) : (
-                <div className="flex flex-col items-center justify-center py-12 text-center">
-                  <p className="text-sm text-muted-foreground">
+                <div className="flex flex-col items-center justify-center gap-3 px-6 py-16 text-center">
+                  <p className="text-sm font-medium text-[var(--glass-sub)]">
                     {t("article.list.noArticles")}
                   </p>
+                  {hasActiveTriageFilters && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="gap-1.5"
+                      onClick={() => {
+                        setSortBy("time");
+                        setTriageSearch({}, { reset: true });
+                      }}
+                    >
+                      <RotateCcw className="h-3.5 w-3.5" />
+                      {t("panel.toolbar.resetFilters")}
+                    </Button>
+                  )}
                 </div>
               )
             ) : (
               <>
-                {articles.map((article) => {
-                  const feed = getFeedById(article.feed_id);
-                  const bookmark = getBookmarkByItemId(article.id);
+                <div>
+                  {displayedArticles.map((article) => {
+                    const feed = getFeedById(article.feed_id);
+                    const bookmark = getBookmarkByItemId(article.id);
 
-                  return (
-                    <ArticleItem
-                      key={article.id}
-                      article={article}
-                      selectedArticleId={selectedArticleId}
-                      onSelectArticle={setSelectedArticle}
-                      onToggleRead={handleToggleRead}
-                      onToggleStar={handleToggleStar}
-                      canToggleRead={article.id > 0}
-                      isStarred={isItemStarred(article.id)}
-                      feedName={feed?.name ?? bookmark?.feed_name ?? t("common.unknown")}
-                      feedFaviconUrl={
-                        feed ? getFaviconUrl(feed.link, feed.site_url) : null
-                      }
-                    />
-                  );
-                })}
+                    return (
+                      <ArticleItem
+                        key={article.id}
+                        article={article}
+                        selectedArticleId={selectedArticleId}
+                        onSelectArticle={setSelectedArticle}
+                        onToggleRead={handleToggleRead}
+                        onToggleStar={handleToggleStar}
+                        canToggleRead={article.id > 0}
+                        isStarred={isItemStarred(article.id)}
+                        showFetchedTime={!isStarredMode}
+                        feedName={
+                          feed?.name ??
+                          bookmark?.feed_name ??
+                          t("common.unknown")
+                        }
+                        feedFaviconUrl={
+                          feed ? getFaviconUrl(feed.link, feed.site_url) : null
+                        }
+                      />
+                    );
+                  })}
+                </div>
                 {hasMore && (
-                  <div className="flex justify-center py-4">
+                  <div className="flex justify-center border-t border-[var(--glass-inner-line)] py-4">
                     <Button
                       variant="outline"
                       size="sm"
                       onClick={() => fetchNextPage()}
                       disabled={isLoadingMore}
-                      className="gap-2"
+                      className="gap-2 rounded-xl border-[var(--glass-border)] bg-[var(--glass-panel)]"
                     >
                       {isLoadingMore && (
                         <Loader2 className="h-4 w-4 animate-spin" />
@@ -271,8 +302,8 @@ export function ArticleList() {
               </>
             )}
           </div>
-        </ScrollArea>
-      </div>
+        </div>
+      </ScrollArea>
     </div>
   );
 }

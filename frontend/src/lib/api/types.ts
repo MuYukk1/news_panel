@@ -233,6 +233,16 @@ export interface BatchCreateFeedsResponse {
   errors: string[] | null;
 }
 
+export interface PluginHeartbeat {
+  source_id: string;
+  plugin_version: string;
+  status: "ok" | "degraded" | "error";
+  fetched_count: number;
+  error_message: string | null;
+  timestamp: string;
+  updated_at: string;
+}
+
 // OIDC
 export interface OIDCStatusResponse {
   enabled: boolean;
