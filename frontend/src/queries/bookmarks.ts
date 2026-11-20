@@ -31,7 +31,7 @@ export function resolveBookmarkItemId(bookmark: Bookmark): number {
   return bookmark.item_id ?? -bookmark.id;
 }
 
-function buildListBookmarksParams(
+export function buildListBookmarksParams(
   filters: NormalizedBookmarkFilters,
   cursor: string | null,
   pageSize: number,
@@ -40,6 +40,7 @@ function buildListBookmarksParams(
     limit: pageSize,
     triage_status:
       filters.triageStatus === "all" ? undefined : filters.triageStatus,
+    scored: filters.triageStatus === "kept" ? true : undefined,
     domain: filters.domain,
     priority: filters.priority,
     min_score: filters.minScore,

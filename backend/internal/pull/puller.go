@@ -58,6 +58,12 @@ func (p *Puller) Start(ctx context.Context) error {
 	}
 }
 
+const pluginShadowFeedPrefix = "urn:news_panel:source:"
+
+func isPluginShadowFeed(link string) bool {
+	return strings.HasPrefix(strings.TrimSpace(link), pluginShadowFeedPrefix)
+}
+
 // pullAll fetches all feeds concurrently with semaphore limiting.
 func (p *Puller) pullAll(ctx context.Context) {
 	feeds, err := p.store.ListFeeds()
@@ -68,6 +74,9 @@ func (p *Puller) pullAll(ctx context.Context) {
 
 	now := time.Now().Unix()
 	_, _ = p.dispatchFeeds(ctx, feeds, func(feed *model.Feed) bool {
+		if isPluginShadowFeed(feed.Link) {
+			return false
+		}
 		state := pullpolicy.FeedRuntimeState{
 			Suspended:           feed.Suspended,
 			RetryAfterUntil:     feed.FetchState.RetryAfterUntil,
@@ -226,7 +235,7 @@ func (p *Puller) RefreshAll(ctx context.Context) (int, error) {
 	}
 
 	count, err := p.dispatchFeeds(ctx, feeds, func(feed *model.Feed) bool {
-		return !feed.Suspended
+		return !feed.Suspended && !isPluginShadowFeed(feed.Link)
 	})
 	if err != nil {
 		return count, err
@@ -269,6 +278,9 @@ func (p *Puller) RefreshFeed(ctx context.Context, feedID int64) error {
 	feed, err := p.store.GetFeed(feedID)
 	if err != nil {
 		return fmt.Errorf("get feed: %w", err)
+	}
+	if isPluginShadowFeed(feed.Link) {
+		return nil
 	}
 
 	if err := p.concurrency.Acquire(ctx, 1); err != nil {

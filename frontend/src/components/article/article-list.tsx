@@ -110,6 +110,8 @@ export function ArticleList() {
     title = group?.name ?? t("article.groupFallback");
   } else if (triageSearch.triage_status === "filtered") {
     title = t("panel.nav.filtered");
+  } else if (triageSearch.triage_status === "unscored") {
+    title = t("panel.nav.unscored");
   } else if (articleFilter === "unread") {
     title = t("article.filter.unread");
   } else if (articleFilter === "starred") {
@@ -121,6 +123,7 @@ export function ArticleList() {
   const hasActiveTriageFilters = Boolean(
     triageSearch.domain ||
       triageSearch.priority ||
+      triageSearch.feed_id !== undefined ||
       (triageSearch.min_score !== undefined && triageSearch.min_score > 0) ||
       (triageSearch.triage_status && triageSearch.triage_status !== "kept"),
   );
@@ -193,6 +196,8 @@ export function ArticleList() {
         title={title}
         articleFilter={articleFilter}
         triageSearch={triageSearch}
+        feeds={feeds}
+        isFeedRoute={selectedFeedId !== null}
         sortBy={sortBy}
         unreadCount={unreadCount}
         isRefreshing={isRefreshing}

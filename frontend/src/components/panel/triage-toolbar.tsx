@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   CheckCheck,
   RefreshCw,
@@ -7,13 +7,14 @@ import {
   SlidersHorizontal,
 } from "lucide-react";
 import { SidebarTrigger } from "@/components/layout/sidebar-trigger";
-import type { Item } from "@/lib/api";
+import type { Feed, Item } from "@/lib/api";
 import type { ArticleFilter } from "@/lib/article-filter";
 import { useI18n, type TranslationKey } from "@/lib/i18n";
 import type { TriageSearch, TriageStatusFilter } from "@/lib/triage-search";
 import { cn } from "@/lib/utils";
 import {
   countActiveAdvancedFilters,
+  isPluginSourceFeed,
   PANEL_DOMAINS,
   PANEL_PRIORITIES,
   PANEL_TRIAGE_TABS,
@@ -32,8 +33,8 @@ const DOMAIN_LABELS: Record<PanelDomain, TranslationKey> = {
 
 const TRIAGE_TAB_LABELS: Record<PanelTriageTab, TranslationKey> = {
   kept: "panel.triage.kept",
+  unscored: "panel.triage.unscored",
   filtered: "panel.triage.filtered",
-  pending: "panel.triage.pending",
   all: "panel.triage.all",
 };
 
@@ -50,6 +51,8 @@ interface TriageToolbarProps {
   title: string;
   articleFilter: ArticleFilter;
   triageSearch: TriageSearch;
+  feeds: readonly Feed[];
+  isFeedRoute?: boolean;
   sortBy: "time" | "score";
   unreadCount: number;
   isRefreshing: boolean;
@@ -68,6 +71,8 @@ export function TriageToolbar({
   title,
   articleFilter,
   triageSearch,
+  feeds,
+  isFeedRoute = false,
   sortBy,
   unreadCount,
   isRefreshing,
@@ -89,13 +94,28 @@ export function TriageToolbar({
   const activeDomain = triageSearch.domain ?? "all";
   const activePriority = triageSearch.priority ?? "all";
   const activeMinScore = triageSearch.min_score ?? 0;
+  const activeFeedId = triageSearch.feed_id;
   const activeAdvancedCount =
     countActiveAdvancedFilters(triageSearch) + (sortBy === "score" ? 1 : 0);
+
+  const { pluginFeeds, rssFeeds } = useMemo(() => {
+    const plugins: Feed[] = [];
+    const rss: Feed[] = [];
+    for (const feed of feeds) {
+      if (isPluginSourceFeed(feed.link)) {
+        plugins.push(feed);
+      } else {
+        rss.push(feed);
+      }
+    }
+    return { pluginFeeds: plugins, rssFeeds: rss };
+  }, [feeds]);
 
   const hasAnyFilter =
     activeDomain !== "all" ||
     activePriority !== "all" ||
     activeMinScore > 0 ||
+    activeFeedId !== undefined ||
     activeTriageStatus !== (isStarredMode ? "all" : "kept") ||
     sortBy !== "time";
 
@@ -135,7 +155,7 @@ export function TriageToolbar({
             ))}
           </div>
 
-          {/* Triage status switch (kept / filtered / pending / all) */}
+          {/* Triage status switch (kept / unscored / filtered / all) */}
           <div
             className="np-seg"
             role="group"
@@ -146,7 +166,10 @@ export function TriageToolbar({
                 key={status}
                 type="button"
                 className="np-seg-btn"
-                aria-pressed={activeTriageStatus === status}
+                aria-pressed={
+                  activeTriageStatus === status ||
+                  (status === "unscored" && activeTriageStatus === "pending")
+                }
                 onClick={() =>
                   onUpdateTriage({
                     triage_status:
@@ -346,6 +369,46 @@ export function TriageToolbar({
                 </span>
               </label>
             </div>
+
+            {/* Source Filter (External Plugins / RSS Subscriptions) */}
+            {!isFeedRoute && feeds.length > 0 && (
+              <label className="flex flex-wrap items-center gap-2">
+                <span className="text-xs font-semibold text-[var(--glass-sub)]">
+                  {t("panel.toolbar.source")}
+                </span>
+                <select
+                  aria-label={t("panel.toolbar.source")}
+                  value={activeFeedId !== undefined ? String(activeFeedId) : ""}
+                  onChange={(e) => {
+                    const raw = e.target.value;
+                    onUpdateTriage({
+                      feed_id: raw ? Number(raw) : undefined,
+                    });
+                  }}
+                  className="h-7 max-w-[220px] rounded-full border border-[var(--glass-inner-line)] bg-[var(--glass-panel)] px-3 text-xs font-medium text-[var(--glass-ink)] outline-none transition-colors hover:border-[var(--glass-acc)]/40 focus-visible:ring-2 focus-visible:ring-[var(--glass-acc)]"
+                >
+                  <option value="">{t("panel.toolbar.sourceAll")}</option>
+                  {pluginFeeds.length > 0 && (
+                    <optgroup label={t("panel.toolbar.sourceGroupPlugins")}>
+                      {pluginFeeds.map((feed) => (
+                        <option key={feed.id} value={String(feed.id)}>
+                          {feed.name}
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
+                  {rssFeeds.length > 0 && (
+                    <optgroup label={t("panel.toolbar.sourceGroupRss")}>
+                      {rssFeeds.map((feed) => (
+                        <option key={feed.id} value={String(feed.id)}>
+                          {feed.name}
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
+                </select>
+              </label>
+            )}
 
             {/* Client-Side Sort of Loaded Pages */}
             <div className="flex flex-wrap items-center gap-2 lg:ml-auto">

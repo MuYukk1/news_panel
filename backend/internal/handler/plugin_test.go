@@ -438,3 +438,136 @@ func TestBookmarkTriageMetadataAndFilters(t *testing.T) {
 		t.Fatalf("orphan snapshot: %d %s", w.Code, w.Body.String())
 	}
 }
+
+func TestScoredAndUnscoredQueryEndpoints(t *testing.T) {
+	score := 88
+	evaluator := evaluatorFunc(func(_ context.Context, input triage.Input) (triage.Result, error) {
+		if input.ExternalID == "filtered" {
+			return triage.Result{Domain: "other", AIScore: nil, AITags: []string{}, Priority: "low", TriageStatus: "filtered"}, nil
+		}
+		return triage.Result{Domain: "ai", AIScore: &score, AITags: []string{"release"}, AISummary: "AI news", Priority: "high", TriageStatus: "kept"}, nil
+	})
+	router, st := pluginRouter(t, "test-token", evaluator)
+
+	// Ingest one scored kept item and one filtered item.
+	if w := pluginPost(t, router, "/api/v1/ingest", ingestBatch(validIngestItem("scored"), validIngestItem("filtered"))); w.Code != 200 {
+		t.Fatal(w.Body.String())
+	}
+	// Create one native RSS item (triage_status='kept', ai_score=NULL).
+	rssFeed, err := st.CreateFeed(1, "RSS News", "https://example.org/rss.xml", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.CreateItem(rssFeed.ID, "rss-1", "RSS Title", "https://example.org/1", "RSS body", 1700000000); err != nil {
+		t.Fatal(err)
+	}
+
+	cases := []struct {
+		query string
+		want  int
+	}{
+		{"triage_status=kept", 2},
+		{"triage_status=kept&scored=true", 1},
+		{"triage_status=unscored", 1},
+		{"scored=true", 1},
+		{"scored=false", 2},
+	}
+	for _, tc := range cases {
+		w := performRequest(router, "GET", "/api/items?"+tc.query, nil, nil)
+		var list struct {
+			Data  []model.Item `json:"data"`
+			Total int          `json:"total"`
+		}
+		if err := json.Unmarshal(w.Body.Bytes(), &list); err != nil {
+			t.Fatal(err)
+		}
+		if w.Code != 200 || list.Total != tc.want || len(list.Data) != tc.want {
+			t.Errorf("%s: code=%d total=%d len=%d want=%d", tc.query, w.Code, list.Total, len(list.Data), tc.want)
+		}
+	}
+
+	for _, bad := range []string{"scored=1", "scored=yes", "scored="} {
+		if w := performRequest(router, "GET", "/api/items?"+bad, nil, nil); w.Code != 400 {
+			t.Errorf("expected 400 for %s, got %d", bad, w.Code)
+		}
+	}
+}
+
+func TestPluginPauseResumeSkipsIngestAndMarksHeartbeatPaused(t *testing.T) {
+	evalCalls := 0
+	evaluator := evaluatorFunc(func(ctx context.Context, input triage.Input) (triage.Result, error) {
+		evalCalls++
+		return (triage.PassThrough{}).Evaluate(ctx, input)
+	})
+	router, st := pluginRouter(t, "test-token", evaluator)
+
+	// Initial heartbeat registers plugin as enabled=true, paused=false.
+	w := pluginPost(t, router, "/api/v1/heartbeat", heartbeatBody())
+	if w.Code != 200 || !strings.Contains(w.Body.String(), `"paused":false`) {
+		t.Fatalf("initial heartbeat: %d %s", w.Code, w.Body.String())
+	}
+
+	// Ingest one item while enabled.
+	w = pluginPost(t, router, "/api/v1/ingest", ingestBatch(validIngestItem("before-pause")))
+	if w.Code != 200 || !strings.Contains(w.Body.String(), `"accepted":1`) || evalCalls != 1 {
+		t.Fatalf("ingest while enabled: %d %s calls=%d", w.Code, w.Body.String(), evalCalls)
+	}
+
+	// Pause plugin via PATCH /api/v1/plugins/:source_id.
+	w = performRequest(router, "PATCH", "/api/v1/plugins/x-main", strings.NewReader(`{"enabled":false}`), map[string]string{"Content-Type": "application/json"})
+	if w.Code != 200 || !strings.Contains(w.Body.String(), `"enabled":false`) {
+		t.Fatalf("pause plugin: %d %s", w.Code, w.Body.String())
+	}
+
+	// Heartbeat while paused preserves enabled=false and returns paused:true.
+	w = pluginPost(t, router, "/api/v1/heartbeat", heartbeatBody())
+	if w.Code != 200 || !strings.Contains(w.Body.String(), `"paused":true`) {
+		t.Fatalf("paused heartbeat: %d %s", w.Code, w.Body.String())
+	}
+
+	// Ingest while paused returns 200 with zero accepted/deduplicated/rejected and does not call evaluator or persist.
+	w = pluginPost(t, router, "/api/v1/ingest", ingestBatch(validIngestItem("while-paused")))
+	var resp ingestResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	if w.Code != 200 || resp.Accepted != 0 || resp.Deduplicated != 0 || resp.Rejected != 0 || len(resp.Errors) != 0 || evalCalls != 1 {
+		t.Fatalf("paused ingest should skip: %d %s calls=%d", w.Code, w.Body.String(), evalCalls)
+	}
+	items, err := st.ListItems(store.ListItemsParams{})
+	if err != nil || len(items) != 1 {
+		t.Fatalf("paused ingest persisted items unexpectedly: %d %v", len(items), err)
+	}
+
+	// Resume plugin and confirm ingest resumes and heartbeat returns paused:false.
+	w = performRequest(router, "PATCH", "/api/v1/plugins/x-main", strings.NewReader(`{"enabled":true}`), map[string]string{"Content-Type": "application/json"})
+	if w.Code != 200 || !strings.Contains(w.Body.String(), `"enabled":true`) {
+		t.Fatalf("resume plugin: %d %s", w.Code, w.Body.String())
+	}
+	w = pluginPost(t, router, "/api/v1/heartbeat", heartbeatBody())
+	if w.Code != 200 || !strings.Contains(w.Body.String(), `"paused":false`) {
+		t.Fatalf("resumed heartbeat: %d %s", w.Code, w.Body.String())
+	}
+	w = pluginPost(t, router, "/api/v1/ingest", ingestBatch(validIngestItem("after-resume")))
+	if w.Code != 200 || !strings.Contains(w.Body.String(), `"accepted":1`) || evalCalls != 2 {
+		t.Fatalf("resumed ingest: %d %s calls=%d", w.Code, w.Body.String(), evalCalls)
+	}
+
+	// Validation & 404 checks.
+	if w := performRequest(router, "PATCH", "/api/v1/plugins/unknown-plugin", strings.NewReader(`{"enabled":false}`), map[string]string{"Content-Type": "application/json"}); w.Code != 404 {
+		t.Fatalf("expected 404 for unknown plugin, got %d", w.Code)
+	}
+	if w := performRequest(router, "PATCH", "/api/v1/plugins/x-main", strings.NewReader(`{}`), map[string]string{"Content-Type": "application/json"}); w.Code != 400 {
+		t.Fatalf("expected 400 for missing enabled field, got %d", w.Code)
+	}
+
+	// Reader auth check on PATCH /api/v1/plugins/:source_id.
+	authH, err := New(st, &config.Config{Password: "reader-secret", IngestToken: "test-token"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	authRouter := authH.SetupRouter()
+	if w := performRequest(authRouter, "PATCH", "/api/v1/plugins/x-main", strings.NewReader(`{"enabled":false}`), map[string]string{"Authorization": "Bearer test-token", "Content-Type": "application/json"}); w.Code != 401 {
+		t.Fatalf("plugin token must not bypass reader auth on PATCH /api/v1/plugins/:source_id, got %d", w.Code)
+	}
+}

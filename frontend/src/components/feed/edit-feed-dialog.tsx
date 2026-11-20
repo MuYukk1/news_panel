@@ -49,6 +49,7 @@ export function EditFeedDialog() {
   const [groupId, setGroupId] = useState<string>("");
   const [proxy, setProxy] = useState("");
   const [suspended, setSuspended] = useState(false);
+  const [aiEnabled, setAiEnabled] = useState(false);
   const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
@@ -69,6 +70,7 @@ export function EditFeedDialog() {
       setGroupId(editingFeed.group_id.toString());
       setProxy(editingFeed.proxy ?? "");
       setSuspended(editingFeed.suspended);
+      setAiEnabled(editingFeed.ai_enabled);
       setIsAdvancedOpen(!!editingFeed.proxy);
       setIsMobileErrorTooltipOpen(false);
     }
@@ -80,6 +82,7 @@ export function EditFeedDialog() {
     setGroupId("");
     setProxy("");
     setSuspended(false);
+    setAiEnabled(false);
     setIsAdvancedOpen(false);
     setIsDeleteOpen(false);
   };
@@ -122,6 +125,10 @@ export function EditFeedDialog() {
 
       if (suspended !== editingFeed.suspended) {
         request.suspended = suspended;
+      }
+
+      if (aiEnabled !== editingFeed.ai_enabled) {
+        request.ai_enabled = aiEnabled;
       }
 
       const newProxy = proxy.trim() || undefined;
@@ -294,6 +301,26 @@ export function EditFeedDialog() {
                 id="edit-feed-suspended"
                 checked={suspended}
                 onCheckedChange={setSuspended}
+              />
+            </div>
+
+            {/* AI Scoring Opt-in Toggle */}
+            <div className="flex items-center justify-between">
+              <div>
+                <label
+                  htmlFor="edit-feed-ai-enabled"
+                  className="text-[13px] font-medium"
+                >
+                  {t("feed.edit.aiEnabledLabel")}
+                </label>
+                <p className="text-xs text-muted-foreground">
+                  {t("feeds.aiToggle.tooltip")}
+                </p>
+              </div>
+              <Switch
+                id="edit-feed-ai-enabled"
+                checked={aiEnabled}
+                onCheckedChange={setAiEnabled}
               />
             </div>
 

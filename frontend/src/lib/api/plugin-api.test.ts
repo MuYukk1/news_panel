@@ -17,6 +17,7 @@ describe("pluginAPI and itemAPI contract mapping", () => {
           error_message: null,
           timestamp: "2026-11-19T00:00:00Z",
           updated_at: "2026-11-19T00:00:02Z",
+          enabled: true,
         },
       ],
       total: 1,
@@ -65,5 +66,55 @@ describe("pluginAPI and itemAPI contract mapping", () => {
     expect(query.get("min_score")).toBe("0");
     expect(query.get("unread")).toBe("true");
     expect(query.get("limit")).toBe("25");
+  });
+
+  it("serializes scored and unscored parameters and patches plugin enabled state", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.startsWith("/api/v1/plugins/")) {
+        return new Response(
+          JSON.stringify({
+            data: {
+              source_id: "x-twifork-main",
+              plugin_version: "0.1.0",
+              status: "ok",
+              fetched_count: 5,
+              error_message: null,
+              timestamp: "2026-11-20T00:00:00Z",
+              updated_at: "2026-11-20T00:00:01Z",
+              enabled: false,
+            },
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      return new Response(
+        JSON.stringify({ data: [], total: 0, next_cursor: null }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    });
+
+    await itemAPI.list({ triage_status: "kept", scored: true, feed_id: 9 });
+    const keptQuery = new URLSearchParams(
+      String(fetchMock.mock.calls[0]?.[0]).split("?")[1] ?? "",
+    );
+    expect(keptQuery.get("triage_status")).toBe("kept");
+    expect(keptQuery.get("scored")).toBe("true");
+    expect(keptQuery.get("feed_id")).toBe("9");
+
+    await itemAPI.list({ triage_status: "unscored" });
+    const unscoredQuery = new URLSearchParams(
+      String(fetchMock.mock.calls[1]?.[0]).split("?")[1] ?? "",
+    );
+    expect(unscoredQuery.get("triage_status")).toBe("unscored");
+    expect(unscoredQuery.get("scored")).toBeNull();
+
+    const updated = await pluginAPI.update("x-twifork-main", { enabled: false });
+    expect(fetchMock.mock.calls[2]?.[0]).toBe("/api/v1/plugins/x-twifork-main");
+    expect(fetchMock.mock.calls[2]?.[1]).toMatchObject({
+      method: "PATCH",
+      body: JSON.stringify({ enabled: false }),
+    });
+    expect(updated.data?.enabled).toBe(false);
   });
 });

@@ -139,6 +139,7 @@ describe("panel-utils aggregation and sorting", () => {
         error_message: null,
         timestamp: "2026-11-19T00:00:00Z",
         updated_at: "2026-11-19T00:00:01Z",
+        enabled: true,
       },
       {
         source_id: "x-backup",
@@ -148,6 +149,7 @@ describe("panel-utils aggregation and sorting", () => {
         error_message: "rate limited",
         timestamp: "2026-11-19T00:00:00Z",
         updated_at: "2026-11-19T00:00:01Z",
+        enabled: true,
       },
       {
         source_id: "x-broken",
@@ -157,6 +159,7 @@ describe("panel-utils aggregation and sorting", () => {
         error_message: "cookie expired",
         timestamp: "2026-11-19T00:00:00Z",
         updated_at: "2026-11-19T00:00:01Z",
+        enabled: false,
       },
     ];
 
@@ -179,6 +182,13 @@ describe("panel-utils aggregation and sorting", () => {
     expect(
       countActiveAdvancedFilters({ priority: "critical", min_score: 60 }),
     ).toBe(2);
+    expect(
+      countActiveAdvancedFilters({
+        priority: "critical",
+        min_score: 60,
+        feed_id: 12,
+      }),
+    ).toBe(3);
 
     expect(getGreetingKey(8)).toBe("overview.greeting.morning");
     expect(getGreetingKey(15)).toBe("overview.greeting.afternoon");

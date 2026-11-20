@@ -14,7 +14,7 @@
 | `P1-02` | 外置 X (Twitter) 纯 HTTP 采集插件（`twifork[impersonate]`） | Phase 1 (v0.1) | 通道 A / `ZCode` | `DONE` | `plugins/x-twifork/**` | [P1-02-x-source-plugin.md](./P1-02-x-source-plugin.md) |
 | `P1-03` | 核心内置 L1+L2 AI 过滤与分拣管线（OpenAI-compatible + 可选 CLI 适配器） | Phase 1 (v0.1) | 通道 A / `Qoder` | `DONE` | `backend/internal/ai/**`, `backend/cmd/fusion/main.go`（最小接入） | [P1-03-ai-triage-pipeline.md](./P1-03-ai-triage-pipeline.md) |
 | `P1-04` | 统一浅色磨砂液态玻璃高信号情报工作台前端重构（含双时间显示） | Phase 1 (v0.1) | 通道 A / Antigravity（`feat/p1-04-high-signal-panel` 已合入 `main`） | `DONE` | `frontend/index.html`, `frontend/src/**` | [P1-04-high-signal-panel.md](./P1-04-high-signal-panel.md) |
-| `P2-01` | 阅读抽屉流畅优化、RSS 未打分归类、订阅源/插件开关、来源筛选与 OPML 多选导入 | Phase 2 (v0.2) | 待认领（独立分支 `feat/p2-01-ux-rss-source-controls`） | `TODO` | `backend/internal/{model,store,handler}/**`, `frontend/src/**` | [P2-01-ux-rss-source-controls.md](./P2-01-ux-rss-source-controls.md) |
+| `P2-01` | 阅读抽屉流畅优化、RSS 未打分归类、订阅源/插件开关、来源筛选与 OPML 多选导入 | Phase 2 (v0.2) | 通道 A / Antigravity（分支 `feat/p2-01-ux-rss-source-controls`） | `IN_REVIEW` | `backend/internal/{model,store,handler}/**`, `frontend/src/**` | [P2-01-ux-rss-source-controls.md](./P2-01-ux-rss-source-controls.md) |
 
 ---
 

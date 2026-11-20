@@ -30,7 +30,7 @@ type ItemsMutationContext = {
   prevOverviewTop: Item[] | undefined;
 };
 
-function buildListItemsParams(
+export function buildListItemsParams(
   filters: NormalizedItemFilters,
   cursor: string | null,
   pageSize: number,
@@ -40,6 +40,7 @@ function buildListItemsParams(
     order_by: "pub_date",
     triage_status:
       filters.triageStatus === "all" ? undefined : filters.triageStatus,
+    scored: filters.triageStatus === "kept" ? true : undefined,
     domain: filters.domain,
     priority: filters.priority,
     min_score: filters.minScore,
@@ -73,16 +74,18 @@ export const itemQueries = {
         return res.data;
       },
     }),
-  overviewCount: (key: "unread-kept" | "kept" | "filtered") =>
+  overviewCount: (key: "unread-kept" | "kept" | "filtered" | "unscored") =>
     queryOptions({
       queryKey: queryKeys.items.overviewCount(key),
       queryFn: async () => {
         const params: ListItemsParams =
           key === "unread-kept"
-            ? { unread: true, triage_status: "kept", limit: 1 }
+            ? { unread: true, triage_status: "kept", scored: true, limit: 1 }
             : key === "kept"
-              ? { triage_status: "kept", limit: 1 }
-              : { triage_status: "filtered", limit: 1 };
+              ? { triage_status: "kept", scored: true, limit: 1 }
+              : key === "unscored"
+                ? { triage_status: "unscored", limit: 1 }
+                : { triage_status: "filtered", limit: 1 };
         const res = await itemAPI.list(params);
         return res.total;
       },
@@ -94,6 +97,7 @@ export const itemQueries = {
       queryFn: async () => {
         const res = await itemAPI.list({
           triage_status: "kept",
+          scored: true,
           limit,
           order_by: "pub_date",
         });
@@ -107,7 +111,8 @@ export function useOverviewCounts() {
   const unreadKept = useQuery(itemQueries.overviewCount("unread-kept"));
   const kept = useQuery(itemQueries.overviewCount("kept"));
   const filtered = useQuery(itemQueries.overviewCount("filtered"));
-  return { unreadKept, kept, filtered };
+  const unscored = useQuery(itemQueries.overviewCount("unscored"));
+  return { unreadKept, kept, filtered, unscored };
 }
 
 export function useOverviewKeptItems(limit = 50, enabled = true) {

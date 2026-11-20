@@ -83,7 +83,7 @@ export const queryKeys = {
     details: () => [...queryKeys.items.all, "detail"] as const,
     detail: (id: number) => [...queryKeys.items.all, "detail", id] as const,
     overview: () => [...queryKeys.items.all, "overview"] as const,
-    overviewCount: (key: "unread-kept" | "kept" | "filtered") =>
+    overviewCount: (key: "unread-kept" | "kept" | "filtered" | "unscored") =>
       [...queryKeys.items.overview(), "count", key] as const,
     overviewTop: (limit = 50) =>
       [...queryKeys.items.overview(), "top", limit] as const,

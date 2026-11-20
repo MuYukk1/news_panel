@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { ChevronDown, Plus, Radar, X } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   Dialog,
   DialogContent,
@@ -21,22 +22,31 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
+import { FeedMultiSelectList } from "@/components/feed/feed-multi-select-list";
 import { useUIStore } from "@/store";
 import { useGroups } from "@/queries/groups";
-import { useCreateFeed } from "@/queries/feeds";
+import { useCreateFeed, useFeedLookup } from "@/queries/feeds";
 import {
   feedAPI,
   type CreateFeedRequest,
   type DiscoveredFeed,
 } from "@/lib/api";
+import {
+  batchImportCandidates,
+  discoveredToCandidates,
+  type ImportCandidateFeed,
+  type ImportGroupMode,
+} from "@/lib/feed-import";
 import { toast } from "sonner";
 import { useI18n } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 
 export function AddFeedDialog() {
   const { t } = useI18n();
+  const queryClient = useQueryClient();
   const { isAddFeedOpen, setAddFeedOpen } = useUIStore();
   const { data: groups = [] } = useGroups();
+  const { feeds: existingFeeds } = useFeedLookup();
   const createFeed = useCreateFeed();
 
   const [url, setUrl] = useState("");
@@ -46,12 +56,41 @@ export function AddFeedDialog() {
   const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isValidating, setIsValidating] = useState(false);
-  const [detectedFeeds, setDetectedFeeds] = useState<DiscoveredFeed[]>([]);
+
+  // Multi-select batch import dialog state
+  const [detectedCandidates, setDetectedCandidates] = useState<
+    ImportCandidateFeed[]
+  >([]);
+  const [selectedLinks, setSelectedLinks] = useState<Set<string>>(new Set());
+  const [batchSearchQuery, setBatchSearchQuery] = useState("");
+  const [batchGroupMode, setBatchGroupMode] = useState<ImportGroupMode>("auto");
+  const [batchGroupId, setBatchGroupId] = useState<string>("");
   const [isFeedSelectOpen, setIsFeedSelectOpen] = useState(false);
+  const [isBatchSubmitting, setIsBatchSubmitting] = useState(false);
+
   const groupItems = groups.map((group) => ({
     value: group.id.toString(),
     label: group.name,
   }));
+
+  const existingLinks = useMemo(
+    () => new Set(existingFeeds.map((f) => f.link)),
+    [existingFeeds],
+  );
+
+  const hasDetectedGroups = useMemo(
+    () => detectedCandidates.some((c) => Boolean(c.groupName)),
+    [detectedCandidates],
+  );
+
+  const resetBatchState = () => {
+    setDetectedCandidates([]);
+    setSelectedLinks(new Set());
+    setBatchSearchQuery("");
+    setBatchGroupMode("auto");
+    setBatchGroupId("");
+    setIsFeedSelectOpen(false);
+  };
 
   const resetForm = () => {
     setUrl("");
@@ -59,8 +98,7 @@ export function AddFeedDialog() {
     setGroupId("");
     setProxy("");
     setIsAdvancedOpen(false);
-    setDetectedFeeds([]);
-    setIsFeedSelectOpen(false);
+    resetBatchState();
   };
 
   const handleClose = () => {
@@ -68,7 +106,18 @@ export function AddFeedDialog() {
     resetForm();
   };
 
-  const handleSelectDetectedFeed = (feed: DiscoveredFeed) => {
+  const openMultiSelectDialog = (feeds: DiscoveredFeed[]) => {
+    const candidates = discoveredToCandidates(feeds);
+    const hasGroups = candidates.some((c) => Boolean(c.groupName));
+    setDetectedCandidates(candidates);
+    setSelectedLinks(new Set(candidates.map((c) => c.link)));
+    setBatchSearchQuery("");
+    setBatchGroupMode(hasGroups ? "auto" : "single");
+    setBatchGroupId(groupId || groups[0]?.id.toString() || "");
+    setIsFeedSelectOpen(true);
+  };
+
+  const handleSelectSingleDetectedFeed = (feed: DiscoveredFeed) => {
     setUrl(feed.link);
     setName((prev) => {
       if (prev.trim() || !feed.title.trim()) {
@@ -76,8 +125,7 @@ export function AddFeedDialog() {
       }
       return feed.title.trim();
     });
-    setIsFeedSelectOpen(false);
-    setDetectedFeeds([]);
+    resetBatchState();
     toast.success(t("feed.toast.detected"));
   };
 
@@ -100,16 +148,58 @@ export function AddFeedDialog() {
       }
 
       if (feeds.length === 1) {
-        handleSelectDetectedFeed(feeds[0]);
+        handleSelectSingleDetectedFeed(feeds[0]);
         return;
       }
 
-      setDetectedFeeds(feeds);
-      setIsFeedSelectOpen(true);
+      openMultiSelectDialog(feeds);
     } catch {
       toast.error(t("feed.toast.detectFailed"));
     } finally {
       setIsValidating(false);
+    }
+  };
+
+  const handleBatchSubmit = async () => {
+    const chosen = detectedCandidates.filter((c) => selectedLinks.has(c.link));
+    if (chosen.length === 0) return;
+
+    setIsBatchSubmitting(true);
+    try {
+      const effectiveMode: ImportGroupMode = hasDetectedGroups
+        ? batchGroupMode
+        : "single";
+      const parsedTargetGroupId = batchGroupId
+        ? parseInt(batchGroupId, 10)
+        : groupId
+          ? parseInt(groupId, 10)
+          : (groups[0]?.id ?? 1);
+
+      const { created, failed, errors } = await batchImportCandidates({
+        candidates: chosen,
+        groupMode: effectiveMode,
+        targetGroupId: parsedTargetGroupId,
+        defaultGroupName: t("opml.group.default"),
+        queryClient,
+      });
+
+      if (created > 0) {
+        toast.success(t("opml.toast.imported", { count: created }));
+      }
+      if (failed > 0) {
+        const errorMsg = errors?.join(", ") || t("feed.toast.addFailed");
+        toast.warning(
+          t("opml.toast.failedItems", { count: failed, errors: errorMsg }),
+        );
+      }
+      if (created === 0 && failed === 0) {
+        toast.info(t("opml.toast.noNewFeeds"));
+      }
+      handleClose();
+    } catch {
+      toast.error(t("feed.toast.addFailed"));
+    } finally {
+      setIsBatchSubmitting(false);
     }
   };
 
@@ -121,8 +211,6 @@ export function AddFeedDialog() {
 
     setIsSubmitting(true);
     try {
-      // Validate before creating so an unreachable or malformed URL fails
-      // here with a clear message instead of a "successful" empty feed.
       const check = await feedAPI.validate(validateRequest(url.trim()));
       const feeds = check.data?.feeds ?? [];
       if (feeds.length === 0) {
@@ -130,11 +218,6 @@ export function AddFeedDialog() {
         return;
       }
 
-      // Discovery also reports feeds found elsewhere on the host (common
-      // paths, service matchers), so a non-empty list does not prove the
-      // entered URL itself is a feed. Only proceed when the entered URL
-      // matched; otherwise adopt a single unambiguous discovery, or make the
-      // user pick when several were found.
       const entered = url.trim();
       const normalizeUrl = (value: string) =>
         value.trim().replace(/\/+$/, "").toLowerCase();
@@ -144,19 +227,19 @@ export function AddFeedDialog() {
 
       let link = entered;
       let title = "";
+      let siteUrl = "";
       if (match) {
-        // Prefer the discovered link: the entered URL may differ in ways the
-        // normalization ignores (trailing slash) that not every server accepts.
         link = match.link;
         title = match.title.trim();
+        siteUrl = match.site_url?.trim() ?? "";
         setUrl(link);
       } else if (feeds.length === 1) {
         link = feeds[0].link;
         title = feeds[0].title.trim();
+        siteUrl = feeds[0].site_url?.trim() ?? "";
         setUrl(link);
       } else {
-        setDetectedFeeds(feeds);
-        setIsFeedSelectOpen(true);
+        openMultiSelectDialog(feeds);
         return;
       }
       if (!name.trim() && title) {
@@ -171,6 +254,7 @@ export function AddFeedDialog() {
         link,
         name: name.trim() || title || link,
         group_id: selectedGroupId,
+        ...(siteUrl ? { site_url: siteUrl } : {}),
       };
 
       if (proxy.trim()) {
@@ -338,17 +422,18 @@ export function AddFeedDialog() {
         </DialogContent>
       </Dialog>
 
+      {/* Multi-Select Batch Discovery Dialog */}
       <Dialog
         open={isFeedSelectOpen}
         onOpenChange={(open) => {
           setIsFeedSelectOpen(open);
           if (!open) {
-            setDetectedFeeds([]);
+            resetBatchState();
           }
         }}
       >
         <DialogContent
-          className="w-full max-w-[560px] p-0"
+          className="flex w-full max-w-[600px] flex-col gap-0 overflow-hidden p-0"
           showCloseButton={false}
         >
           <DialogHeader className="flex flex-row items-center justify-between border-b px-5 py-4">
@@ -357,38 +442,105 @@ export function AddFeedDialog() {
                 {t("feed.select.title")}
               </DialogTitle>
               <DialogDescription>
-                {t("feed.select.description")}
+                {t("feed.select.batchDescription")}
               </DialogDescription>
             </div>
             <Button
               variant="ghost"
               size="icon-sm"
-              onClick={() => {
-                setIsFeedSelectOpen(false);
-                setDetectedFeeds([]);
-              }}
+              onClick={resetBatchState}
             >
               <span className="sr-only">{t("common.cancel")}</span>
               <X className="h-[18px] w-[18px] text-muted-foreground" />
             </Button>
           </DialogHeader>
 
-          <div className="max-h-[360px] space-y-2 overflow-y-auto p-4">
-            {detectedFeeds.map((feed, index) => (
-              <button
-                key={`${feed.link}-${index}`}
-                type="button"
-                onClick={() => handleSelectDetectedFeed(feed)}
-                className="w-full rounded-md border p-3 text-left transition-colors hover:bg-accent/50"
-              >
-                <p className="truncate text-sm font-medium">
-                  {feed.title || t("feed.select.fallback", { index: index + 1 })}
-                </p>
-                <p className="mt-1 truncate text-xs text-muted-foreground">
-                  {feed.link}
-                </p>
-              </button>
-            ))}
+          <div className="space-y-4 p-5">
+            <FeedMultiSelectList
+              candidates={detectedCandidates}
+              selectedLinks={selectedLinks}
+              onChangeSelected={setSelectedLinks}
+              searchQuery={batchSearchQuery}
+              onChangeSearchQuery={setBatchSearchQuery}
+              existingLinks={existingLinks}
+            />
+
+            {/* Target Group Strategy */}
+            <div className="space-y-2 rounded-xl border border-border/70 bg-muted/30 p-3">
+              {hasDetectedGroups && (
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    className="np-pill-btn !h-7 !px-3 !text-xs"
+                    aria-pressed={batchGroupMode === "auto"}
+                    onClick={() => setBatchGroupMode("auto")}
+                  >
+                    {t("feed.batch.groupModeAuto")}
+                  </button>
+                  <button
+                    type="button"
+                    className="np-pill-btn !h-7 !px-3 !text-xs"
+                    aria-pressed={batchGroupMode === "single"}
+                    onClick={() => setBatchGroupMode("single")}
+                  >
+                    {t("feed.batch.groupModeSingle")}
+                  </button>
+                </div>
+              )}
+
+              {(!hasDetectedGroups || batchGroupMode === "single") && (
+                <div className="flex items-center gap-2">
+                  <label
+                    className="shrink-0 text-xs font-medium text-muted-foreground"
+                    id="batch-feed-group-label"
+                  >
+                    {t("feed.add.groupLabel")}
+                  </label>
+                  <Select
+                    items={groupItems}
+                    value={batchGroupId || null}
+                    onValueChange={(v) => {
+                      if (v) setBatchGroupId(v);
+                    }}
+                  >
+                    <SelectTrigger
+                      className="h-8 flex-1 text-xs"
+                      aria-labelledby="batch-feed-group-label"
+                    >
+                      <SelectValue
+                        placeholder={t("feed.add.groupPlaceholder")}
+                      />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {groupItems.map((group) => (
+                        <SelectItem key={group.value} value={group.value}>
+                          {group.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="flex items-center justify-end gap-3 border-t px-5 py-4">
+            <Button
+              variant="outline"
+              onClick={resetBatchState}
+              disabled={isBatchSubmitting}
+            >
+              {t("common.cancel")}
+            </Button>
+            <Button
+              onClick={() => void handleBatchSubmit()}
+              disabled={isBatchSubmitting || selectedLinks.size === 0}
+            >
+              <Plus className="mr-1.5 h-4 w-4" />
+              {isBatchSubmitting
+                ? t("common.importing")
+                : t("feed.batch.addButton", { count: selectedLinks.size })}
+            </Button>
           </div>
         </DialogContent>
       </Dialog>

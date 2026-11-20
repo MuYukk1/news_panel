@@ -26,6 +26,7 @@ import type {
   Settings,
   UpdateSettingsRequest,
   PluginHeartbeat,
+  UpdatePluginRequest,
 } from "./types";
 
 // Session APIs
@@ -95,6 +96,7 @@ export const itemAPI = {
     if (params?.before) query.set("before", params.before);
     if (params?.order_by) query.set("order_by", params.order_by);
     if (params?.triage_status) query.set("triage_status", params.triage_status);
+    if (params?.scored !== undefined) query.set("scored", String(params.scored));
     if (params?.domain) query.set("domain", params.domain);
     if (params?.priority) query.set("priority", params.priority);
     if (params?.min_score !== undefined) query.set("min_score", String(params.min_score));
@@ -123,6 +125,7 @@ export const bookmarkAPI = {
     query.set("limit", (params.limit ?? 50).toString());
     if (params.before) query.set("before", params.before);
     if (params.triage_status) query.set("triage_status", params.triage_status);
+    if (params.scored !== undefined) query.set("scored", String(params.scored));
     if (params.domain) query.set("domain", params.domain);
     if (params.priority) query.set("priority", params.priority);
     if (params.min_score !== undefined) query.set("min_score", String(params.min_score));
@@ -149,6 +152,12 @@ export const settingsAPI = {
 export const pluginAPI = {
   heartbeats: () =>
     api.get<ListResponse<PluginHeartbeat>>("/v1/plugins/heartbeats"),
+
+  update: (sourceId: string, data: UpdatePluginRequest) =>
+    api.patch<APIResponse<PluginHeartbeat>>(
+      `/v1/plugins/${encodeURIComponent(sourceId)}`,
+      data,
+    ),
 };
 
 // Search APIs

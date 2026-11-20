@@ -4,7 +4,7 @@
 - **Task ID**：`P2-01`
 - **Phase / Milestone**：`Phase 2 (v0.2 体验收口与来源控制)`
 - **前置门禁（Gate Dependency）**：`Gate 1 已于 2026-11-20 正式批准（DEC-006 / DEC-007 已锁定）`
-- **当前状态（Status）**：`TODO`（可选：`TODO` | `IN_PROGRESS` | `IN_REVIEW` | `DONE` | `BLOCKED`）
+- **当前状态（Status）**：`DONE`（2026-11-21 LEAD 独立复验 Go 全量单测 + 前端全套校验通过，并补齐 `puller.go` 影子源跳过保护后合入 `main`）
 - **调度通道与目标执行端（Channel / Runner）**：`通道 A / 通道 B 均可（单执行端负责全栈小切片，避免前后端接口错位）`
 - **工作区 / 分支策略（Worktree / Branch）**：**严禁直接在 `main` 提交代码**。须在独立分支或 worktree 执行：
   - `git checkout -b feat/p2-01-ux-rss-source-controls`（或 `git worktree add ../news_panel-p2-01 -b feat/p2-01-ux-rss-source-controls`）
@@ -148,12 +148,12 @@
 
 ## 验收标准与验证命令（Acceptance Criteria & Verification）
 
-- [ ] **抽屉动画流畅无闪白**：关闭阅读抽屉时正文随抽屉完整滑出不提前消失，开关无明显掉帧，且未破坏已读撤回、收藏快照与键盘快捷键。
-- [ ] **RSS 未打分归类（方案 A）**：原生 RSS 新入库默认 `ai_enabled=false`、`ai_score=null`，自动归入「未打分 (`unscored`)」视图，不混入「AI 精选 (`kept`)」KPI / Top Picks / Domain Pulse；后端向后兼容不破坏旧单测。
-- [ ] **订阅源与外置插件液态玻璃开关**：`/feeds` 可一键启停 RSS 源及切换 `ai_enabled`；`/sources` 与 `/feeds` 可一键启停外置插件，插件被暂停时 `POST /api/v1/ingest` 静默跳过不落库、`POST /api/v1/heartbeat` 返回 `"paused": true`。
-- [ ] **高级筛选支持来源筛选**：`TriageToolbar` 高级筛选支持按外置插件或具体 RSS 源过滤，与 URL `?feed_id=` 同步并支持一键重置。
-- [ ] **多源探测 & OPML 多选批量导入**：粘贴 GitHub `.opml` `blob` 链接（如 `cn-ai-research.opml`）或上传本地 `.opml` 文件均可解析出列表并支持多选勾选 + 全选/反选 + 批量导入，且受 SSRF 校验保护。
-- [ ] **全量后端 + 前端验证通过**（最终修改后亲自执行并如实记录输出）：
+- [x] **抽屉动画流畅无闪白**：关闭阅读抽屉时正文随抽屉完整滑出不提前消失，开关无明显掉帧，且未破坏已读撤回、收藏快照与键盘快捷键。
+- [x] **RSS 未打分归类（方案 A）**：原生 RSS 新入库默认 `ai_enabled=false`、`ai_score=null`，自动归入「未打分 (`unscored`)」视图，不混入「AI 精选 (`kept`)」KPI / Top Picks / Domain Pulse；后端向后兼容不破坏旧单测。
+- [x] **订阅源与外置插件液态玻璃开关**：`/feeds` 可一键启停 RSS 源及切换 `ai_enabled`；`/sources` 与 `/feeds` 可一键启停外置插件，插件被暂停时 `POST /api/v1/ingest` 静默跳过不落库、`POST /api/v1/heartbeat` 返回 `"paused": true`。
+- [x] **高级筛选支持来源筛选**：`TriageToolbar` 高级筛选支持按外置插件或具体 RSS 源过滤，与 URL `?feed_id=` 同步并支持一键重置。
+- [x] **多源探测 & OPML 多选批量导入**：粘贴 GitHub `.opml` `blob` 链接（如 `cn-ai-research.opml`）或上传本地 `.opml` 文件均可解析出列表并支持多选勾选 + 全选/反选 + 批量导入，且受 SSRF 校验保护。
+- [x] **全量后端 + 前端验证通过**（LEAD 已在 Linux Go 1.27.4 独立跑通 `go test -count=1 ./...` 全部 9 个包，并独立复验前端 `check:i18n` / `typecheck` / `test` / `build` 全绿）：
   ```bash
   # 1) Go 后端全量测试
   cd backend
@@ -170,18 +170,89 @@
   git diff --name-only
   git status --short
   ```
-- [ ] **单测覆盖**：
+- [x] **单测覆盖**：
   - Go 后端新增单测覆盖：`007_source_controls.sql` 迁移、`scored=true|false` & `triage_status=unscored` 查询、插件暂停后 `ingest` 跳过与 `heartbeat` 返回 `paused: true`、GitHub `blob` → `raw` OPML URL 解析与多源返回；
   - 前端 Vitest 新增单测覆盖：`triage-search.ts` 的 `unscored` & `feed_id` 解析、多选 OPML/发现列表辅助逻辑及 API 参数映射。
 
 ---
 
 ## Handoff Report（交付回执 —— 结束前必填）
-- **提交状态**：`TODO`（执行端完成后改为 `IN_REVIEW` 或 `BLOCKED`）
-- **执行端 / 通道**：`<待认领>`
-- **实际改动文件清单**：
-  - `<待填写>`
-- **实测验证命令与观察结果**（仅填写最终修改后亲自跑过并观察到的真实结果）：
-  - `<待填写>`
+- **提交状态**：`IN_REVIEW`
+- **执行端 / 通道**：`通道 A / Antigravity（独立分支 feat/p2-01-ux-rss-source-controls）`
+- **实际改动文件清单**（全部 100% 落入 `Owned Files`）：
+  - **Backend 新增**：
+    - `backend/internal/store/migrations/007_source_controls.sql`
+    - `backend/internal/store/source_controls_test.go`
+    - `backend/internal/handler/opml.go`
+    - `backend/internal/handler/opml_test.go`
+  - **Backend 修改**：
+    - `backend/internal/model/model.go`
+    - `backend/internal/store/feed.go`
+    - `backend/internal/store/item.go`
+    - `backend/internal/store/plugin.go`
+    - `backend/internal/handler/handler.go`
+    - `backend/internal/handler/feed.go`
+    - `backend/internal/handler/feed_test.go`
+    - `backend/internal/handler/item.go`
+    - `backend/internal/handler/plugin.go`
+    - `backend/internal/handler/plugin_test.go`
+  - **Frontend 新增**：
+    - `frontend/src/components/panel/glass-switch.tsx`
+    - `frontend/src/components/feed/feed-multi-select-list.tsx`
+    - `frontend/src/lib/feed-import.ts`
+    - `frontend/src/lib/feed-import.test.ts`
+  - **Frontend 修改**：
+    - `frontend/src/components/ui/sheet.tsx`
+    - `frontend/src/components/panel/panel.css`
+    - `frontend/src/components/panel/panel-utils.ts`
+    - `frontend/src/components/panel/panel-utils.test.ts`
+    - `frontend/src/components/panel/signal-bars.tsx`
+    - `frontend/src/components/panel/triage-toolbar.tsx`
+    - `frontend/src/components/panel/sources-page.tsx`
+    - `frontend/src/components/panel/source-health-card.tsx`
+    - `frontend/src/components/article/article-drawer.tsx`
+    - `frontend/src/components/article/article-item.tsx`
+    - `frontend/src/components/article/article-list.tsx`
+    - `frontend/src/components/article/triage-metadata.tsx`
+    - `frontend/src/components/feed/feed-group-card.tsx`
+    - `frontend/src/components/feed/feed-item.tsx`
+    - `frontend/src/components/feed/edit-feed-dialog.tsx`
+    - `frontend/src/components/feed/add-feed-dialog.tsx`
+    - `frontend/src/components/feed/import-opml-dialog.tsx`
+    - `frontend/src/components/layout/sidebar.tsx`
+    - `frontend/src/routes/feeds.lazy.tsx`
+    - `frontend/src/hooks/use-article-list.ts`
+    - `frontend/src/hooks/use-url-state.ts`
+    - `frontend/src/lib/api/types.ts`
+    - `frontend/src/lib/api/index.ts`
+    - `frontend/src/lib/api/plugin-api.test.ts`
+    - `frontend/src/lib/triage-search.ts`
+    - `frontend/src/lib/triage-search.test.ts`
+    - `frontend/src/queries/keys.ts`
+    - `frontend/src/queries/items.ts`
+    - `frontend/src/queries/bookmarks.ts`
+    - `frontend/src/queries/feeds.ts`
+    - `frontend/src/queries/plugins.ts`
+    - `frontend/src/lib/i18n/messages/{en,zh,de,es,fr,pt,ru,sv}.ts`
+  - **交接文档**：
+    - `tasks/P2-01-ux-rss-source-controls.md`
+    - `tasks/INDEX.md`
+- **实测验证命令与观察结果**（全部为最终修改后亲自执行并真实观察到的输出）：
+  - `cd frontend; pnpm run check:i18n` → **PASS**（exit 0，`[zh/de/fr/es/ru/pt/sv] OK (348 keys)`，`All locale dictionaries are complete.`）
+  - `cd frontend; pnpm run typecheck` → **PASS**（exit 0，`tsr generate && tsc -b --noEmit` 零报错）
+  - `cd frontend; pnpm run test` → **PASS**（exit 0，Vitest `Test Files 8 passed (8)`，`Tests 40 passed (40)`，耗时 720ms，覆盖 `triage-search.test.ts`、`plugin-api.test.ts`、`feed-import.test.ts`、`panel-utils.test.ts` 等全部单测）
+  - `cd frontend; pnpm run build` → **PASS**（exit 0，`tsr generate && tsc -b && vite build`，2409 modules transformed，built in 985ms）
+  - `cd backend; go test ./...` → **未运行（环境缺失）**：Windows 宿主机及 WSL 均未安装 `go` 工具链（`go: command not found`），Docker Desktop 守护进程未启动；已逐行人工核对 Go 代码导入、SQL 字段与 `Scan` 列表及单测断言，待 LEAD 在 Go 1.26 / Linux 环境执行 `cd backend && go test -count=1 ./...` 复核。
+  - `git status --short` / `git diff --name-only` → **PASS**：100% 变更落入 `Owned Files`（未触碰 `backend/internal/ai/**`、`backend/cmd/**`、`plugins/**`、`deploy/**`、`Dockerfile`、`frontend/package.json`、`Temp/**`）。
 - **边界变更申请 / 遗留风险 / 下一步建议**：
-  - `<待填写>`
+  1. **边界外潜在风险（`backend/internal/pull/puller.go` 未修改，提请 LEAD 确认）**：本任务严格按详规在 `SetPluginEnabled` 中同步更新影子源 `urn:news_panel:source:<source_id>` 的 `feeds.suspended = !enabled`；但边界外文件 `backend/internal/pull/puller.go`（`pullAll` 与 `RefreshAll`）目前仅按 `!feed.Suspended` 过滤轮询对象、未跳过 `urn:news_panel:source:` 私有 URI。若外置插件在暂停后再恢复（`feeds.suspended = 0`），`puller` 下轮会尝试 HTTP 请求 `urn:news_panel:source:*` 并记录 `unsupported url scheme: urn` 错误。建议 LEAD 合入前在 `backend/internal/pull/puller.go` 补充 `strings.HasPrefix(feed.Link, "urn:news_panel:source:")` 跳过保护。
+  2. **Go 后端编译与单测复核**：请在具备 Go 1.26 的环境运行 `cd backend && go test -count=1 ./...` 验收后端迁移 `007`、`scored`/`unscored` 过滤、插件启停控制及远程 OPML / GitHub `blob`→`raw` 解析单测。
+  3. **前端可选检查提示**：既有仓库依赖中 `typescript-eslint` 与 `typescript@7.0.2` 存在上游版本不兼容（运行 `pnpm run lint` 报 `typescript-eslint does not support TS 7.0`），与本任务无关且未改动 `frontend/package.json`。
+
+### LEAD 独立复验记录（Antigravity LEAD · 2026-11-21）
+- **核验结论**：`DONE`（通过全部 5 项验收标准、文件边界审查、协议与安全审查，并由 LEAD 补齐边界外 `puller.go` 影子源保护后合入 `main`）。
+- **LEAD 补修（边界外协同修复）**：
+  - `backend/internal/pull/puller.go`、`backend/internal/pull/puller_test.go`：在 `pullAll`、`RefreshAll`、`RefreshFeed` 中新增 `isPluginShadowFeed(feed.Link)`（跳过 `urn:news_panel:source:` 私有 URI），并新增 `TestPullerSkipsPluginShadowFeedsEvenWhenUnsuspended` 单测，彻底杜绝外置插件恢复后被 RSS Puller 误拉取。
+- **LEAD 独立实测命令与观察输出**：
+  - `backend`：`go test -count=1 ./...`（WSL Linux Go 1.27.4）→ **全部 9 个含测试包 PASS**（`internal/ai`、`internal/auth`、`internal/config`、`internal/handler`、`internal/pkg/httpc`、`internal/pull`、`internal/pullpolicy`、`internal/store`、`internal/triage`，含新增 `007` 迁移、`scored`/`unscored`、插件启停、远程 OPML/GitHub `blob`→`raw` 及 `puller` 影子源跳过单测）。
+  - `frontend`：`pnpm --dir frontend run check:i18n` → `[zh/de/fr/es/ru/pt/sv] OK (348 keys)`；`typecheck` → 0 errors；`test` → `Test Files 8 passed (8)`, `Tests 40 passed (40)`；`build` → `2409 modules transformed`, `✓ built in 1.07s`。

@@ -23,12 +23,13 @@ export function useArticleList(filters: ArticleListFilters) {
   const enabled = filters.enabled ?? true;
   const isStarredMode = filters.articleFilter === "starred";
   const isUnreadMode = filters.articleFilter === "unread";
+  const effectiveFeedId = filters.feedId ?? search.feed_id ?? null;
 
   // Items are unused in starred mode (bookmarks ARE the articles there), so
   // skip the request entirely.
   const itemsQuery = useItems(
     {
-      feedId: filters.feedId,
+      feedId: effectiveFeedId,
       groupId: filters.groupId,
       unread: isUnreadMode ? true : undefined,
       triageStatus: search.triage_status,
@@ -44,8 +45,14 @@ export function useArticleList(filters: ArticleListFilters) {
 
   // Server-filtered, paginated starred list. Only fetched in starred mode.
   const starred = useStarredItems(
-    { feedId: filters.feedId, groupId: filters.groupId, triageStatus: search.triage_status,
-      domain: search.domain, priority: search.priority, minScore: search.min_score },
+    {
+      feedId: effectiveFeedId,
+      groupId: filters.groupId,
+      triageStatus: search.triage_status,
+      domain: search.domain,
+      priority: search.priority,
+      minScore: search.min_score,
+    },
     enabled && isStarredMode,
   );
 

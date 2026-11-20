@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -87,6 +88,7 @@ type PluginHeartbeat struct {
 	ErrorMessage  *string `json:"error_message"`
 	Timestamp     string  `json:"timestamp"`
 	UpdatedAt     string  `json:"updated_at"`
+	Enabled       bool    `json:"enabled"`
 }
 
 func (s *Store) UpsertHeartbeat(ctx context.Context, h PluginHeartbeat) error {
@@ -100,8 +102,65 @@ func (s *Store) UpsertHeartbeat(ctx context.Context, h PluginHeartbeat) error {
 	return err
 }
 
+// IsPluginEnabled returns whether an external source plugin is currently enabled.
+// Plugins with no heartbeat record yet default to enabled (true).
+func (s *Store) IsPluginEnabled(ctx context.Context, sourceID string) (bool, error) {
+	var enabled int
+	err := s.db.QueryRowContext(ctx, `SELECT enabled FROM plugin_heartbeats WHERE source_id = ?`, sourceID).Scan(&enabled)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return true, nil
+		}
+		return false, err
+	}
+	return intToBool(enabled), nil
+}
+
+// SetPluginEnabled updates a plugin's enabled state and synchronizes its shadow feed's suspended flag.
+func (s *Store) SetPluginEnabled(ctx context.Context, sourceID string, enabled bool) (*PluginHeartbeat, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	res, err := tx.ExecContext(ctx, `UPDATE plugin_heartbeats SET enabled = ?, updated_at = ? WHERE source_id = ?`,
+		boolToInt(enabled), now, sourceID)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := res.RowsAffected()
+	if err != nil {
+		return nil, err
+	}
+	if rows == 0 {
+		return nil, fmt.Errorf("%w: plugin", ErrNotFound)
+	}
+
+	shadowLink := "urn:news_panel:source:" + sourceID
+	if _, err := tx.ExecContext(ctx, `UPDATE feeds SET suspended = ?, updated_at = unixepoch() WHERE link = ?`,
+		boolToInt(!enabled), shadowLink); err != nil {
+		return nil, err
+	}
+
+	var h PluginHeartbeat
+	var enabledInt int
+	if err := tx.QueryRowContext(ctx, `SELECT source_id, plugin_version, status, fetched_count, error_message, timestamp, updated_at, enabled FROM plugin_heartbeats WHERE source_id = ?`, sourceID).Scan(
+		&h.SourceID, &h.PluginVersion, &h.Status, &h.FetchedCount, &h.ErrorMessage, &h.Timestamp, &h.UpdatedAt, &enabledInt,
+	); err != nil {
+		return nil, err
+	}
+	h.Enabled = intToBool(enabledInt)
+
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return &h, nil
+}
+
 func (s *Store) ListHeartbeats(ctx context.Context) ([]PluginHeartbeat, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT source_id, plugin_version, status, fetched_count, error_message, timestamp, updated_at FROM plugin_heartbeats ORDER BY source_id`)
+	rows, err := s.db.QueryContext(ctx, `SELECT source_id, plugin_version, status, fetched_count, error_message, timestamp, updated_at, enabled FROM plugin_heartbeats ORDER BY source_id`)
 	if err != nil {
 		return nil, err
 	}
@@ -109,9 +168,11 @@ func (s *Store) ListHeartbeats(ctx context.Context) ([]PluginHeartbeat, error) {
 	result := []PluginHeartbeat{}
 	for rows.Next() {
 		var h PluginHeartbeat
-		if err := rows.Scan(&h.SourceID, &h.PluginVersion, &h.Status, &h.FetchedCount, &h.ErrorMessage, &h.Timestamp, &h.UpdatedAt); err != nil {
+		var enabled int
+		if err := rows.Scan(&h.SourceID, &h.PluginVersion, &h.Status, &h.FetchedCount, &h.ErrorMessage, &h.Timestamp, &h.UpdatedAt, &enabled); err != nil {
 			return nil, err
 		}
+		h.Enabled = intToBool(enabled)
 		result = append(result, h)
 	}
 	return result, rows.Err()
@@ -142,7 +203,13 @@ func appendTriageFilters(query string, args []any, p ListItemsParams) (string, [
 }
 
 func appendTriageFiltersAlias(query string, args []any, p ListItemsParams, alias string) (string, []any) {
-	for _, f := range []struct{ name, value string }{{"triage_status", p.TriageStatus}, {"domain", p.Domain}, {"priority", p.Priority}} {
+	if p.TriageStatus == "unscored" {
+		query += " AND " + alias + ".ai_score IS NULL AND COALESCE(" + alias + ".triage_status, 'pending') NOT IN ('filtered', 'failed')"
+	} else if p.TriageStatus != "" {
+		query += " AND " + alias + ".triage_status = :triage_status"
+		args = append(args, sql.Named("triage_status", p.TriageStatus))
+	}
+	for _, f := range []struct{ name, value string }{{"domain", p.Domain}, {"priority", p.Priority}} {
 		if f.value != "" {
 			query += " AND " + alias + "." + f.name + " = :" + f.name
 			args = append(args, sql.Named(f.name, f.value))
@@ -151,6 +218,13 @@ func appendTriageFiltersAlias(query string, args []any, p ListItemsParams, alias
 	if p.MinScore != nil {
 		query += " AND " + alias + ".ai_score >= :min_score"
 		args = append(args, sql.Named("min_score", *p.MinScore))
+	}
+	if p.Scored != nil {
+		if *p.Scored {
+			query += " AND " + alias + ".ai_score IS NOT NULL"
+		} else {
+			query += " AND " + alias + ".ai_score IS NULL"
+		}
 	}
 	return query, args
 }

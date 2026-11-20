@@ -42,12 +42,16 @@
 }
 
 .np-drawer-glass {
-  background: var(--glass-panel-strong);
+  background: rgba(255, 255, 255, 0.94);
   border-left: 1px solid var(--glass-border);
-  backdrop-filter: blur(24px);
-  -webkit-backdrop-filter: blur(24px);
-  box-shadow: -16px 0 44px -18px var(--glass-shadow);
-  animation: np-slide-in 240ms cubic-bezier(0.2, 0.9, 0.2, 1) both;
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  box-shadow: -16px 0 40px -18px var(--glass-shadow);
+  contain: layout style;
+}
+
+.dark .np-drawer-glass {
+  background: rgba(18, 21, 46, 0.95);
 }
 
 .np-card-interactive {
@@ -248,15 +252,79 @@
   flex-shrink: 0;
 }
 
-@keyframes np-slide-in {
-  from {
-    opacity: 0.72;
-    transform: translateX(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
+/* Liquid Glass Capsule Switch */
+.np-switch {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  width: 40px;
+  height: 22px;
+  padding: 2px;
+  border-radius: 9999px;
+  border: 1px solid var(--glass-inner-line);
+  background: color-mix(in srgb, var(--glass-bar) 82%, transparent);
+  box-shadow: inset 0 1px 2px rgba(20, 26, 70, 0.14);
+  cursor: pointer;
+  transition:
+    background-color 180ms ease,
+    border-color 180ms ease,
+    box-shadow 180ms ease,
+    opacity 150ms ease;
+}
+
+.np-switch-sm {
+  width: 34px;
+  height: 19px;
+}
+
+.np-switch[aria-checked="true"] {
+  border-color: color-mix(in srgb, var(--glass-acc) 75%, #60a5fa);
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--glass-acc) 72%, #38bdf8) 0%,
+    var(--glass-acc) 100%
+  );
+  box-shadow:
+    inset 0 1px 1px rgba(255, 255, 255, 0.42),
+    0 4px 12px -4px color-mix(in srgb, var(--glass-acc) 65%, transparent);
+}
+
+.np-switch:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.np-switch:focus-visible {
+  outline: 2px solid var(--glass-acc);
+  outline-offset: 2px;
+}
+
+.np-switch-thumb {
+  display: block;
+  width: 16px;
+  height: 16px;
+  border-radius: 9999px;
+  background: linear-gradient(180deg, #ffffff 0%, #f1f4ff 100%);
+  box-shadow:
+    inset 0 1px 1px rgba(255, 255, 255, 0.95),
+    0 2px 5px rgba(18, 24, 68, 0.25);
+  transform: translateX(0);
+  transition: transform 180ms cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: transform;
+}
+
+.np-switch-sm .np-switch-thumb {
+  width: 13px;
+  height: 13px;
+}
+
+.np-switch[aria-checked="true"] .np-switch-thumb {
+  transform: translateX(18px);
+}
+
+.np-switch-sm[aria-checked="true"] .np-switch-thumb {
+  transform: translateX(15px);
 }
 
 @keyframes np-grow {
@@ -275,9 +343,14 @@
   .np-orig-collapse,
   .np-fill,
   .np-seg-btn,
-  .np-pill-btn {
+  .np-pill-btn,
+  .np-switch,
+  .np-switch-thumb {
     animation: none !important;
     transition: none !important;
+  }
+
+  .np-card-interactive:hover {
     transform: none !important;
   }
 }

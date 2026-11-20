@@ -5,7 +5,9 @@ import {
   Download,
   Folder,
   ListFilter,
+  Pause,
   Plus,
+  Radio,
   RefreshCw,
   Rss,
   Search,
@@ -41,10 +43,17 @@ import {
   useFeedLookup,
   useMoveFeedsToGroup,
   useRefreshFeeds,
+  useUpdateFeed,
 } from "@/queries/feeds";
 import { useDeleteGroup, useGroups, useUpdateGroup } from "@/queries/groups";
+import { usePluginHeartbeats, useUpdatePlugin } from "@/queries/plugins";
 import { useUIStore } from "@/store";
 import { FeedGroupCard } from "@/components/feed/feed-group-card";
+import { GlassSwitch } from "@/components/panel/glass-switch";
+import {
+  HEARTBEAT_COLORS,
+  isPluginSourceFeed,
+} from "@/components/panel/panel-utils";
 import { ThemeToggleButton } from "@/components/panel/theme-toggle-button";
 import { useIsMobile } from "@/hooks/use-mobile";
 
@@ -58,10 +67,13 @@ function FeedsPage() {
   const { t } = useI18n();
   const { data: groups = [] } = useGroups();
   const { feeds, getFeedsByGroup, isLoading: isFeedsLoading } = useFeedLookup();
+  const { data: heartbeats = [] } = usePluginHeartbeats();
   const updateGroupMutation = useUpdateGroup();
   const deleteGroupMutation = useDeleteGroup();
   const moveFeedsMutation = useMoveFeedsToGroup();
   const refreshFeedsMutation = useRefreshFeeds();
+  const updateFeedMutation = useUpdateFeed();
+  const updatePluginMutation = useUpdatePlugin();
 
   const {
     setEditFeedOpen,
@@ -74,6 +86,10 @@ function FeedsPage() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [isExporting, setIsExporting] = useState(false);
   const [collapsedGroups, setCollapsedGroups] = useState<Set<number>>(
+    new Set(),
+  );
+  const [pendingFeedIds, setPendingFeedIds] = useState<Set<number>>(new Set());
+  const [pendingPluginIds, setPendingPluginIds] = useState<Set<string>>(
     new Set(),
   );
 
@@ -97,10 +113,18 @@ function FeedsPage() {
 
   const isFiltering = searchQuery.trim() !== "" || statusFilter !== "all";
 
+  const rssFeeds = useMemo(
+    () => feeds.filter((feed) => !isPluginSourceFeed(feed.link)),
+    [feeds],
+  );
+
   const groupedFeeds = useMemo(() => {
     const query = searchQuery.toLowerCase().trim();
 
     const matchesFeed = (feed: Feed) => {
+      if (isPluginSourceFeed(feed.link)) {
+        return false;
+      }
       if (
         query &&
         !feed.name.toLowerCase().includes(query) &&
@@ -119,6 +143,75 @@ function FeedsPage() {
       feeds: getFeedsByGroup(group.id).filter(matchesFeed),
     }));
   }, [groups, searchQuery, statusFilter, getFeedsByGroup]);
+
+  const handleToggleFeedEnabled = async (feed: Feed, enabled: boolean) => {
+    setPendingFeedIds((prev) => new Set(prev).add(feed.id));
+    try {
+      await updateFeedMutation.mutateAsync({
+        id: feed.id,
+        suspended: !enabled,
+      });
+      toast.success(
+        enabled
+          ? t("feeds.toast.enabled", { name: feed.name })
+          : t("feeds.toast.paused", { name: feed.name }),
+      );
+    } catch {
+      toast.error(t("feed.toast.updateFailed"));
+    } finally {
+      setPendingFeedIds((prev) => {
+        const next = new Set(prev);
+        next.delete(feed.id);
+        return next;
+      });
+    }
+  };
+
+  const handleToggleFeedAIEnabled = async (feed: Feed, aiEnabled: boolean) => {
+    setPendingFeedIds((prev) => new Set(prev).add(feed.id));
+    try {
+      await updateFeedMutation.mutateAsync({
+        id: feed.id,
+        ai_enabled: aiEnabled,
+      });
+      toast.success(
+        aiEnabled
+          ? t("feeds.toast.aiEnabled", { name: feed.name })
+          : t("feeds.toast.aiDisabled", { name: feed.name }),
+      );
+    } catch {
+      toast.error(t("feed.toast.updateFailed"));
+    } finally {
+      setPendingFeedIds((prev) => {
+        const next = new Set(prev);
+        next.delete(feed.id);
+        return next;
+      });
+    }
+  };
+
+  const handleTogglePluginEnabled = async (
+    sourceId: string,
+    enabled: boolean,
+  ) => {
+    setPendingPluginIds((prev) => new Set(prev).add(sourceId));
+    try {
+      await updatePluginMutation.mutateAsync({ sourceId, enabled });
+      toast.success(
+        enabled
+          ? t("sources.toast.enabled", { source: sourceId })
+          : t("sources.toast.paused", { source: sourceId }),
+      );
+    } catch {
+      toast.error(t("sources.toast.toggleFailed"));
+    } finally {
+      setPendingPluginIds((prev) => {
+        const next = new Set(prev);
+        next.delete(sourceId);
+        return next;
+      });
+    }
+  };
 
   const toggleGroup = (groupId: number) => {
     setCollapsedGroups((prev) => {
@@ -148,7 +241,10 @@ function FeedsPage() {
         groupAPI.list(),
         feedAPI.list(),
       ]);
-      const opml = generateOPML(groupsRes.data, feedsRes.data);
+      const opml = generateOPML(
+        groupsRes.data,
+        feedsRes.data.filter((f) => !isPluginSourceFeed(f.link)),
+      );
       downloadFile(opml, "fusion-subscriptions.opml", "application/xml");
       toast.success(t("feeds.toast.exported"));
     } catch {
@@ -201,7 +297,7 @@ function FeedsPage() {
   );
 
   const totalVisible = groupedFeeds.reduce((sum, g) => sum + g.feeds.length, 0);
-  const hasNoFeeds = !isFeedsLoading && feeds.length === 0;
+  const hasNoFeeds = !isFeedsLoading && rssFeeds.length === 0;
   const deletingGroupMoveHint = useMemo(() => {
     if (!deletingGroup) {
       return "";
@@ -231,7 +327,7 @@ function FeedsPage() {
             <div className="flex items-center gap-1.5">
               <Rss className="h-4 w-4" />
               <span className="font-medium">
-                {t("feeds.count", { count: feeds.length })}
+                {t("feeds.count", { count: rssFeeds.length })}
               </span>
             </div>
             <ThemeToggleButton />
@@ -341,7 +437,90 @@ function FeedsPage() {
         </div>
 
         <ScrollArea className="min-h-0 flex-1">
-          <div className="space-y-2 p-4 sm:p-6">
+          <div className="space-y-3 p-4 sm:p-6">
+            {/* Compact External Collector Plugins Glass Card */}
+            {heartbeats.length > 0 && (
+              <section className="np-glass-sm overflow-hidden">
+                <div className="flex items-center justify-between bg-[var(--glass-soft)] px-3.5 py-2.5">
+                  <div className="flex items-center gap-2">
+                    <Radio className="h-4 w-4 text-[var(--glass-acc)]" />
+                    <span className="text-sm font-semibold text-[var(--glass-ink)]">
+                      {t("feeds.plugins.title")}
+                    </span>
+                    <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-semibold text-muted-foreground">
+                      {heartbeats.length}
+                    </span>
+                  </div>
+                  <span className="hidden text-xs text-[var(--glass-faint)] sm:inline">
+                    {t("feeds.plugins.subtitle")}
+                  </span>
+                </div>
+                <div className="divide-y divide-border/50">
+                  {heartbeats.map((hb) => {
+                    const tone = HEARTBEAT_COLORS[hb.status];
+                    const isPending = pendingPluginIds.has(hb.source_id);
+                    return (
+                      <div
+                        key={hb.source_id}
+                        className={cn(
+                          "flex items-center justify-between gap-3 px-4 py-2.5 transition-opacity",
+                          !hb.enabled && "opacity-70",
+                        )}
+                      >
+                        <div className="flex min-w-0 items-center gap-2.5">
+                          <span
+                            className="h-2.5 w-2.5 shrink-0 rounded-full"
+                            style={{
+                              backgroundColor: hb.enabled
+                                ? tone
+                                : "var(--glass-faint)",
+                            }}
+                          />
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span className="truncate text-[13px] font-semibold text-[var(--glass-ink)]">
+                                {hb.source_id}
+                              </span>
+                              {!hb.enabled && (
+                                <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-[var(--glass-soft)] px-2 py-0.5 text-[10.5px] font-semibold text-[var(--glass-sub)]">
+                                  <Pause className="h-2.5 w-2.5" />
+                                  {t("sources.status.paused")}
+                                </span>
+                              )}
+                            </div>
+                            <p className="truncate text-[11px] text-muted-foreground">
+                              {t("sources.pluginVersion", {
+                                version: hb.plugin_version,
+                              })}
+                            </p>
+                          </div>
+                        </div>
+                        <GlassSwitch
+                          size="sm"
+                          checked={hb.enabled}
+                          loading={isPending}
+                          aria-label={t("sources.switch.aria", {
+                            source: hb.source_id,
+                          })}
+                          title={
+                            hb.enabled
+                              ? t("sources.switch.pause")
+                              : t("sources.switch.resume")
+                          }
+                          onCheckedChange={(checked) => {
+                            void handleTogglePluginEnabled(
+                              hb.source_id,
+                              checked,
+                            );
+                          }}
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
+            )}
+
             {hasNoFeeds ? (
               <div className="py-12 text-center text-sm text-muted-foreground">
                 {t("feeds.empty")}
@@ -372,6 +551,13 @@ function FeedsPage() {
                       onOpenAddFeed={() => setAddFeedOpen(true)}
                       onOpenDeleteGroup={setDeletingGroup}
                       onOpenEditFeed={(feed) => setEditFeedOpen(true, feed)}
+                      pendingFeedIds={pendingFeedIds}
+                      onToggleFeedEnabled={(feed, enabled) => {
+                        void handleToggleFeedEnabled(feed, enabled);
+                      }}
+                      onToggleFeedAIEnabled={(feed, aiEnabled) => {
+                        void handleToggleFeedAIEnabled(feed, aiEnabled);
+                      }}
                       onChangeMobileErrorTooltipFeedId={setMobileErrorTooltipFeedId}
                       t={t}
                     />

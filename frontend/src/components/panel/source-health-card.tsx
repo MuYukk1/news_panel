@@ -81,12 +81,23 @@ export function SourceHealthCard({
                 <div className="flex items-center gap-2.5">
                   <span
                     className="h-2 w-2 shrink-0 rounded-full"
-                    style={{ backgroundColor: tone }}
-                    aria-label={t(STATUS_LABELS[hb.status])}
+                    style={{
+                      backgroundColor: hb.enabled ? tone : "var(--glass-faint)",
+                    }}
+                    aria-label={
+                      hb.enabled
+                        ? t(STATUS_LABELS[hb.status])
+                        : t("sources.status.paused")
+                    }
                   />
                   <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-[var(--glass-ink)]">
                     {hb.source_id}
                   </span>
+                  {!hb.enabled && (
+                    <span className="shrink-0 rounded-full bg-[var(--glass-soft)] px-2 py-0.5 text-[10.5px] font-semibold text-[var(--glass-sub)]">
+                      {t("feeds.status.paused")}
+                    </span>
+                  )}
                   <span className="shrink-0 rounded-full bg-[var(--glass-soft)] px-2 py-0.5 text-[11px] font-medium tabular-nums text-[var(--glass-sub)]">
                     {t("sources.fetchedBadge", { count: hb.fetched_count })}
                   </span>

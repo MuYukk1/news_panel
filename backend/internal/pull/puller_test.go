@@ -237,3 +237,52 @@ func TestRefreshFeedBackfillsNameFromTitle(t *testing.T) {
 		})
 	}
 }
+
+func TestPullerSkipsPluginShadowFeedsEvenWhenUnsuspended(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "test.db")
+	st, err := store.New(dbPath)
+	if err != nil {
+		t.Fatalf("create store: %v", err)
+	}
+	defer st.Close()
+
+	shadow, err := st.CreateFeed(1, "x-twifork-main", "urn:news_panel:source:x-twifork-main", "", "")
+	if err != nil {
+		t.Fatalf("create shadow feed: %v", err)
+	}
+	suspended := false
+	if err := st.UpdateFeed(shadow.ID, store.UpdateFeedParams{Suspended: &suspended}); err != nil {
+		t.Fatalf("unsuspend shadow feed: %v", err)
+	}
+
+	p := New(st, &config.Config{
+		PullInterval:      1800,
+		PullTimeout:       5,
+		PullConcurrency:   1,
+		PullMaxBackoff:    604800,
+		AllowPrivateFeeds: true,
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	p.pullAll(ctx)
+	count, err := p.RefreshAll(ctx)
+	if err != nil {
+		t.Fatalf("refresh all: %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("expected 0 shadow feeds pulled in RefreshAll, got %d", count)
+	}
+	if err := p.RefreshFeed(ctx, shadow.ID); err != nil {
+		t.Fatalf("refresh shadow feed: %v", err)
+	}
+
+	after, err := st.GetFeed(shadow.ID)
+	if err != nil {
+		t.Fatalf("get shadow feed: %v", err)
+	}
+	if after.FetchState.LastCheckedAt != 0 || after.FetchState.LastError != "" {
+		t.Fatalf("expected shadow feed to remain untouched by puller, got %+v", after.FetchState)
+	}
+}

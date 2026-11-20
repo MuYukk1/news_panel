@@ -168,7 +168,7 @@ func (h *Handler) markItemsUnread(c *gin.Context) {
 
 func triageQueryParams(c *gin.Context) (store.ListItemsParams, bool) {
 	params := store.ListItemsParams{TriageStatus: c.Query("triage_status"), Domain: c.Query("domain"), Priority: c.Query("priority")}
-	if params.TriageStatus != "" && !oneOf(params.TriageStatus, "pending", "kept", "filtered", "failed") {
+	if params.TriageStatus != "" && !oneOf(params.TriageStatus, "pending", "kept", "filtered", "failed", "unscored") {
 		badRequestError(c, "invalid triage_status")
 		return params, false
 	}
@@ -183,6 +183,19 @@ func triageQueryParams(c *gin.Context) (store.ListItemsParams, bool) {
 			return params, false
 		}
 		params.MinScore = &n
+	}
+	if scoredRaw, exists := c.GetQuery("scored"); exists {
+		switch scoredRaw {
+		case "true":
+			v := true
+			params.Scored = &v
+		case "false":
+			v := false
+			params.Scored = &v
+		default:
+			badRequestError(c, "invalid scored")
+			return params, false
+		}
 	}
 
 	return params, true

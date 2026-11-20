@@ -4,6 +4,7 @@ import { useUIStore } from "@/store";
 import { getFaviconUrl } from "@/lib/api/favicon";
 import type { Feed } from "@/lib/api";
 import { FeedFavicon } from "@/components/feed/feed-favicon";
+import { isPluginSourceFeed } from "@/components/panel/panel-utils";
 import { Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useI18n } from "@/lib/i18n";
@@ -33,7 +34,14 @@ export function FeedItem({ feed }: FeedItemProps) {
     >
       <button
         type="button"
-        onClick={() => setSelectedFeed(feed.id)}
+        onClick={() =>
+          setSelectedFeed(
+            feed.id,
+            !feed.ai_enabled && !isPluginSourceFeed(feed.link)
+              ? { triage_status: "all" }
+              : undefined,
+          )
+        }
         className="flex min-w-0 flex-1 items-center gap-2 text-left"
       >
         <FeedFavicon src={faviconUrl} className="h-4 w-4" />

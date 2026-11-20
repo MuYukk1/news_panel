@@ -13,7 +13,7 @@ import (
 func (s *Store) ListFeeds() ([]*model.Feed, error) {
 	rows, err := s.db.Query(`
 		SELECT f.id, f.group_id, f.name, f.link, f.site_url,
-		       f.suspended, f.proxy, f.created_at, f.updated_at,
+		       f.suspended, f.ai_enabled, f.proxy, f.created_at, f.updated_at,
 		       COALESCE(fs.etag, ''), COALESCE(fs.last_modified, ''), COALESCE(fs.cache_control, ''),
 		       COALESCE(fs.expires_at, 0), COALESCE(fs.last_checked_at, 0), COALESCE(fs.next_check_at, 0),
 		       COALESCE(fs.last_http_status, 0), COALESCE(fs.retry_after_until, 0), COALESCE(fs.last_success_at, 0),
@@ -24,7 +24,7 @@ func (s *Store) ListFeeds() ([]*model.Feed, error) {
 		LEFT JOIN feed_fetch_state fs ON fs.feed_id = f.id
 		LEFT JOIN items i ON i.feed_id = f.id
 		GROUP BY f.id, f.group_id, f.name, f.link, f.site_url,
-		         f.suspended, f.proxy, f.created_at, f.updated_at,
+		         f.suspended, f.ai_enabled, f.proxy, f.created_at, f.updated_at,
 		         fs.etag, fs.last_modified, fs.cache_control, fs.expires_at, fs.last_checked_at,
 		         fs.next_check_at, fs.last_http_status, fs.retry_after_until, fs.last_success_at,
 		         fs.last_error_at, fs.last_error, fs.consecutive_failures
@@ -39,6 +39,7 @@ func (s *Store) ListFeeds() ([]*model.Feed, error) {
 	for rows.Next() {
 		f := &model.Feed{}
 		var suspended int
+		var aiEnabled int
 		if err := rows.Scan(
 			&f.ID,
 			&f.GroupID,
@@ -46,6 +47,7 @@ func (s *Store) ListFeeds() ([]*model.Feed, error) {
 			&f.Link,
 			&f.SiteURL,
 			&suspended,
+			&aiEnabled,
 			&f.Proxy,
 			&f.CreatedAt,
 			&f.UpdatedAt,
@@ -67,6 +69,7 @@ func (s *Store) ListFeeds() ([]*model.Feed, error) {
 			return nil, err
 		}
 		f.Suspended = intToBool(suspended)
+		f.AIEnabled = intToBool(aiEnabled)
 		feeds = append(feeds, f)
 	}
 	return feeds, rows.Err()
@@ -75,9 +78,10 @@ func (s *Store) ListFeeds() ([]*model.Feed, error) {
 func (s *Store) GetFeed(id int64) (*model.Feed, error) {
 	f := &model.Feed{}
 	var suspended int
+	var aiEnabled int
 	err := s.db.QueryRow(`
 		SELECT f.id, f.group_id, f.name, f.link, f.site_url,
-		       f.suspended, f.proxy, f.created_at, f.updated_at,
+		       f.suspended, f.ai_enabled, f.proxy, f.created_at, f.updated_at,
 		       COALESCE(fs.etag, ''), COALESCE(fs.last_modified, ''), COALESCE(fs.cache_control, ''),
 		       COALESCE(fs.expires_at, 0), COALESCE(fs.last_checked_at, 0), COALESCE(fs.next_check_at, 0),
 		       COALESCE(fs.last_http_status, 0), COALESCE(fs.retry_after_until, 0), COALESCE(fs.last_success_at, 0),
@@ -92,6 +96,7 @@ func (s *Store) GetFeed(id int64) (*model.Feed, error) {
 		&f.Link,
 		&f.SiteURL,
 		&suspended,
+		&aiEnabled,
 		&f.Proxy,
 		&f.CreatedAt,
 		&f.UpdatedAt,
@@ -116,6 +121,7 @@ func (s *Store) GetFeed(id int64) (*model.Feed, error) {
 	}
 
 	f.Suspended = intToBool(suspended)
+	f.AIEnabled = intToBool(aiEnabled)
 	return f, nil
 }
 
@@ -192,6 +198,7 @@ type UpdateFeedParams struct {
 	Link      *string
 	SiteURL   *string
 	Suspended *bool
+	AIEnabled *bool
 	Proxy     *string
 }
 
@@ -219,6 +226,10 @@ func (s *Store) UpdateFeed(id int64, params UpdateFeedParams) error {
 	if params.Suspended != nil {
 		setClauses = append(setClauses, "suspended = :suspended")
 		args = append(args, sql.Named("suspended", boolToInt(*params.Suspended)))
+	}
+	if params.AIEnabled != nil {
+		setClauses = append(setClauses, "ai_enabled = :ai_enabled")
+		args = append(args, sql.Named("ai_enabled", boolToInt(*params.AIEnabled)))
 	}
 	if params.Proxy != nil {
 		setClauses = append(setClauses, "proxy = :proxy")

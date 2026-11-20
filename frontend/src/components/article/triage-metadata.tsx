@@ -5,6 +5,7 @@ import {
   PriorityPill,
   SignalBars,
   TriageStatusPill,
+  UnscoredPill,
 } from "@/components/panel/signal-bars";
 
 export function TriageMetadata({ article }: { article: Item }) {
@@ -18,12 +19,29 @@ export function TriageMetadata({ article }: { article: Item }) {
     );
   }
 
+  const isUnscored =
+    article.ai_score === null && article.triage_status !== "filtered";
+
   return (
     <div className="flex flex-wrap items-center gap-2">
       <DomainPill domain={article.domain} />
-      <TriageStatusPill status={article.triage_status} />
-      <PriorityPill priority={article.priority} score={article.ai_score} />
-      <SignalBars score={article.ai_score} priority={article.priority} />
+      {isUnscored ? (
+        <>
+          <UnscoredPill />
+          {article.triage_status === "failed" && (
+            <TriageStatusPill status="failed" />
+          )}
+        </>
+      ) : (
+        <>
+          <TriageStatusPill status={article.triage_status} />
+          <PriorityPill
+            priority={article.priority}
+            score={article.ai_score}
+          />
+          <SignalBars score={article.ai_score} priority={article.priority} />
+        </>
+      )}
       {article.ai_tags?.map((tag) => (
         <span
           key={tag}
