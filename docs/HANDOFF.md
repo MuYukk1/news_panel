@@ -7,8 +7,8 @@
 ## 1. 当前项目快照
 
 - **当前所处阶段**：**Phase 2（v0.2 体验收口、三级处理管线与个性化闭环 —— Gate 1 已于 2026-11-20 正式批准）**
-- **代码仓库现状**：Phase 1（v0.1）全部任务 `P1-01`、`P1-02`（含 `729e9bc` 静默熔断修复）、`P1-03`、`P1-04`（含双时间显示）均已完成并合入 `main`（基线提交 `5925b42`，已于 `gcp-e2-west` 线上部署验证）。
-- **协同与派发策略**：当前主控作为 LEAD 已正式发布 Phase 2 首张任务卡 [tasks/P2-01-ux-rss-source-controls.md](../tasks/P2-01-ux-rss-source-controls.md)（抽屉流畅动画 + RSS 未打分归类 + 订阅源/插件液态玻璃开关 + 来源筛选 + OPML/多源多选批量导入，**须在独立分支/worktree `feat/p2-01-ux-rss-source-controls` 执行**）；后续依次推进 `P2-02`（三级处理管线）、`P2-03`（用户反馈与有界个性化档案）、`P2-04`（Telegram 插件）。
+- **代码仓库现状**：Phase 1（`P1-01`–`P1-04`）及 Phase 2 首张任务卡 **`P2-01`**（抽屉流畅动画 + RSS 未打分归类 + 订阅源/插件液态玻璃开关 + 来源筛选 + OPML 多选导入 + `puller` 影子源保护）均已 `DONE` 并合入 `main`（回滚锚点 `baseline-pre-p2-01` / `5925b42`）。
+- **协同与派发策略**：`P2-01` 合入推送后将触发 GHCR 自动构建新版镜像；下一步由 LEAD 按序拆出并派发 `P2-02`（三级处理管线）、`P2-03`（用户反馈与有界个性化档案）、`P2-04`（Telegram 插件）。
 
 ---
 
@@ -51,7 +51,7 @@
 - [x] **DEC-007**：锁定 Phase 2 聚焦「UI/RSS 收口（`P2-01`）→ 三级云端处理管线（`P2-02`）→ 用户优先级反馈与有界个性化档案闭环（`P2-03`）→ Telegram 单一新信源（`P2-04`）」；原生 RSS 采用方案 A（默认「未打分」，单源可选开启 AI 评分）
 
 ### Next Human Gate：Gate 2（Phase 2 v0.2 验收门禁）
-- [ ] 完成 [tasks/P2-01-ux-rss-source-controls.md](../tasks/P2-01-ux-rss-source-controls.md)（`TODO`，抽屉流畅动画 + RSS 未打分归类 + 订阅源/插件开关 + 来源筛选 + OPML/多源多选导入）
+- [x] 完成 [tasks/P2-01-ux-rss-source-controls.md](../tasks/P2-01-ux-rss-source-controls.md)（`DONE`，2026-11-21 LEAD 复验合入 `main`）
 - [ ] 拆解并完成 `P2-02`（三级处理管线：L1 → L2 云端轻量 Decision Adapter → L3 精筛总结）
 - [ ] 拆解并完成 `P2-03`（用户优先级反馈 + 空闲定时归纳有界个性化档案闭环）
 - [ ] 拆解并完成 `P2-04`（外置 Telegram 信源插件，兼容公开频道与个人号私有群）
