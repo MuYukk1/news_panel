@@ -31,6 +31,7 @@ type updateFeedRequest struct {
 	Link      *string `json:"link"`
 	SiteURL   *string `json:"site_url"`
 	Suspended *bool   `json:"suspended"`
+	AIEnabled *bool   `json:"ai_enabled"`
 	Proxy     *string `json:"proxy"` // Empty string clears proxy
 }
 
@@ -40,8 +41,10 @@ type validateFeedRequest struct {
 }
 
 type discoveredFeed struct {
-	Title string `json:"title"`
-	Link  string `json:"link"`
+	Title     string `json:"title"`
+	Link      string `json:"link"`
+	SiteURL   string `json:"site_url,omitempty"`
+	GroupName string `json:"group_name,omitempty"`
 }
 
 type validateFeedResponse struct {
@@ -154,6 +157,9 @@ func (h *Handler) updateFeed(c *gin.Context) {
 	if req.Suspended != nil {
 		params.Suspended = req.Suspended
 	}
+	if req.AIEnabled != nil {
+		params.AIEnabled = req.AIEnabled
+	}
 	if req.Proxy != nil {
 		params.Proxy = req.Proxy
 	}
@@ -214,16 +220,30 @@ func (h *Handler) validateFeed(c *gin.Context) {
 		return
 	}
 
+	fetchTarget := target
+	if rewritten, ok := rewriteGitHubBlobURL(target); ok {
+		if err := httpc.ValidateRequestURL(c.Request.Context(), rewritten, allowPrivateFeeds); err != nil {
+			badRequestError(c, "invalid url")
+			return
+		}
+		fetchTarget = rewritten
+	}
+
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
 	defer cancel()
+
+	if opmlFeeds, isOPML, opmlErr := h.tryFetchOPML(ctx, fetchTarget, proxy, allowPrivateFeeds); opmlErr == nil && isOPML {
+		dataResponse(c, validateFeedResponse{Feeds: opmlFeeds})
+		return
+	}
 
 	var finderOptions *feedfinder.Options
 	if proxy != "" {
 		finderOptions = &feedfinder.Options{RequestProxy: &proxy}
 	}
-	found, err := feedfinder.Find(ctx, target, finderOptions)
+	found, err := feedfinder.Find(ctx, fetchTarget, finderOptions)
 	if err != nil {
-		slog.Warn("feed discovery failed", "url", target, "error", err)
+		slog.Warn("feed discovery failed", "url", fetchTarget, "error", err)
 	}
 
 	feeds := normalizeDiscoveredFeeds(found)
@@ -238,9 +258,9 @@ func (h *Handler) validateFeed(c *gin.Context) {
 	}
 
 	if len(feeds) == 0 {
-		title, parseErr := h.parseFeedTitle(ctx, target, proxy)
+		title, parseErr := h.parseFeedTitle(ctx, fetchTarget, proxy)
 		if parseErr == nil {
-			feeds = append(feeds, discoveredFeed{Title: title, Link: target})
+			feeds = append(feeds, discoveredFeed{Title: title, Link: fetchTarget})
 		}
 	}
 

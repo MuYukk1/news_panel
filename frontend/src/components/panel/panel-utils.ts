@@ -13,8 +13,8 @@ export const PANEL_PRIORITIES: readonly Item["priority"][] = [
 
 export const PANEL_TRIAGE_TABS = [
   "kept",
+  "unscored",
   "filtered",
-  "pending",
   "all",
 ] as const;
 export type PanelTriageTab = (typeof PANEL_TRIAGE_TABS)[number];
@@ -258,6 +258,7 @@ export function countActiveAdvancedFilters(search: TriageSearch): number {
   let count = 0;
   if (search.priority) count += 1;
   if (search.min_score !== undefined && search.min_score > 0) count += 1;
+  if (search.feed_id !== undefined) count += 1;
   return count;
 }
 

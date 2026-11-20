@@ -10,6 +10,7 @@ import {
   RefreshCw,
   Rss,
 } from "lucide-react";
+import { toast } from "sonner";
 import { AppLayout } from "@/components/layout/app-layout";
 import { SidebarTrigger } from "@/components/layout/sidebar-trigger";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -18,7 +19,8 @@ import { getFeedErrorPreview } from "@/lib/feed-error";
 import { useI18n, type TranslationKey } from "@/lib/i18n";
 import { cn, formatDate } from "@/lib/utils";
 import { useFeedLookup } from "@/queries/feeds";
-import { usePluginHeartbeats } from "@/queries/plugins";
+import { usePluginHeartbeats, useUpdatePlugin } from "@/queries/plugins";
+import { GlassSwitch } from "./glass-switch";
 import {
   formatRelativeIsoTime,
   HEARTBEAT_COLORS,
@@ -53,8 +55,12 @@ export function SourcesPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const heartbeatsQuery = usePluginHeartbeats();
+  const updatePluginMutation = useUpdatePlugin();
   const { feeds, isLoading: feedsLoading } = useFeedLookup();
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [pendingPluginIds, setPendingPluginIds] = useState<Set<string>>(
+    new Set(),
+  );
 
   const heartbeats = useMemo(
     () => heartbeatsQuery.data ?? [],
@@ -101,6 +107,29 @@ export function SourcesPage() {
       window.setTimeout(() => setIsRefreshing(false), 320);
     }
   }, [queryClient]);
+
+  const handleTogglePlugin = useCallback(
+    async (sourceId: string, enabled: boolean) => {
+      setPendingPluginIds((prev) => new Set(prev).add(sourceId));
+      try {
+        await updatePluginMutation.mutateAsync({ sourceId, enabled });
+        toast.success(
+          enabled
+            ? t("sources.toast.enabled", { source: sourceId })
+            : t("sources.toast.paused", { source: sourceId }),
+        );
+      } catch {
+        toast.error(t("sources.toast.toggleFailed"));
+      } finally {
+        setPendingPluginIds((prev) => {
+          const next = new Set(prev);
+          next.delete(sourceId);
+          return next;
+        });
+      }
+    },
+    [t, updatePluginMutation],
+  );
 
   return (
     <AppLayout>
@@ -227,10 +256,14 @@ export function SourcesPage() {
                 <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                   {heartbeats.map((hb) => {
                     const tone = HEARTBEAT_COLORS[hb.status];
+                    const isPending = pendingPluginIds.has(hb.source_id);
                     return (
                       <article
                         key={hb.source_id}
-                        className="np-glass np-card-interactive flex flex-col justify-between p-5"
+                        className={cn(
+                          "np-glass np-card-interactive flex flex-col justify-between p-5 transition-opacity",
+                          !hb.enabled && "opacity-75",
+                        )}
                       >
                         <div>
                           <div className="flex items-start justify-between gap-3">
@@ -238,7 +271,11 @@ export function SourcesPage() {
                               <div className="flex items-center gap-2">
                                 <span
                                   className="h-2.5 w-2.5 shrink-0 rounded-full"
-                                  style={{ backgroundColor: tone }}
+                                  style={{
+                                    backgroundColor: hb.enabled
+                                      ? tone
+                                      : "var(--glass-faint)",
+                                  }}
                                 />
                                 <h3 className="truncate text-[15px] font-semibold text-[var(--glass-ink)]">
                                   {hb.source_id}
@@ -250,15 +287,43 @@ export function SourcesPage() {
                                 })}
                               </p>
                             </div>
-                            <span
-                              className="shrink-0 rounded-full px-2.5 py-0.5 text-xs font-semibold"
-                              style={{
-                                color: tone,
-                                backgroundColor: `color-mix(in srgb, ${tone} 14%, transparent)`,
-                              }}
-                            >
-                              {t(STATUS_LABELS[hb.status])}
-                            </span>
+                            <div className="flex shrink-0 items-center gap-2">
+                              {hb.enabled ? (
+                                <span
+                                  className="shrink-0 rounded-full px-2.5 py-0.5 text-xs font-semibold"
+                                  style={{
+                                    color: tone,
+                                    backgroundColor: `color-mix(in srgb, ${tone} 14%, transparent)`,
+                                  }}
+                                >
+                                  {t(STATUS_LABELS[hb.status])}
+                                </span>
+                              ) : (
+                                <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-[var(--glass-soft)] px-2.5 py-0.5 text-xs font-semibold text-[var(--glass-sub)]">
+                                  <Pause className="h-3 w-3" />
+                                  {t("sources.status.paused")}
+                                </span>
+                              )}
+                              <GlassSwitch
+                                size="sm"
+                                checked={hb.enabled}
+                                loading={isPending}
+                                aria-label={t("sources.switch.aria", {
+                                  source: hb.source_id,
+                                })}
+                                title={
+                                  hb.enabled
+                                    ? t("sources.switch.pause")
+                                    : t("sources.switch.resume")
+                                }
+                                onCheckedChange={(checked) => {
+                                  void handleTogglePlugin(
+                                    hb.source_id,
+                                    checked,
+                                  );
+                                }}
+                              />
+                            </div>
                           </div>
 
                           <dl className="mt-4 grid grid-cols-2 gap-3 rounded-2xl bg-[var(--glass-soft)] p-3 text-xs">

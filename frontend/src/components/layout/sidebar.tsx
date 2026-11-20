@@ -1,6 +1,7 @@
 import { useState } from "react";
 import {
   ChevronDown,
+  CircleDashed,
   Cpu,
   Globe,
   Inbox,
@@ -66,7 +67,7 @@ export function Sidebar() {
 
   const { getTotalUnreadCount } = useUnreadCounts();
   const { total: starredTotal } = useBookmarkLookup();
-  const { unreadKept, filtered } = useOverviewCounts();
+  const { unreadKept, filtered, unscored } = useOverviewCounts();
   const { data: heartbeats = [] } = usePluginHeartbeats();
 
   const [feedsSectionOpen, setFeedsSectionOpen] = useState(false);
@@ -82,11 +83,16 @@ export function Sidebar() {
   const isFeedsPage = pathname === "/feeds";
   const isFilteredView =
     isTopLevelArticleRoute && triageSearch.triage_status === "filtered";
+  const isUnscoredView =
+    isTopLevelArticleRoute && triageSearch.triage_status === "unscored";
   const activeDomain =
-    isTopLevelArticleRoute && !isFilteredView ? triageSearch.domain : undefined;
+    isTopLevelArticleRoute && !isFilteredView && !isUnscoredView
+      ? triageSearch.domain
+      : undefined;
 
   const unreadBadge = unreadKept.data ?? getTotalUnreadCount();
   const filteredBadge = filtered.data;
+  const unscoredBadge = unscored.data;
   const hbSummary = summarizeHeartbeats(heartbeats);
   const healthRatio =
     hbSummary.total > 0 ? Math.round((hbSummary.ok / hbSummary.total) * 100) : 0;
@@ -183,6 +189,7 @@ export function Sidebar() {
                 isTopLevelArticleRoute &&
                 articleFilter === "all" &&
                 !isFilteredView &&
+                !isUnscoredView &&
                 !activeDomain
                   ? "page"
                   : undefined
@@ -193,6 +200,7 @@ export function Sidebar() {
                 isTopLevelArticleRoute &&
                   articleFilter === "all" &&
                   !isFilteredView &&
+                  !isUnscoredView &&
                   !activeDomain
                   ? "bg-[var(--glass-soft)] font-semibold text-[var(--glass-acc)]"
                   : "hover:bg-[var(--glass-soft)] hover:text-[var(--glass-ink)]",
@@ -291,6 +299,31 @@ export function Sidebar() {
                   }}
                 >
                   {filteredBadge}
+                </span>
+              )}
+            </button>
+
+            {/* Unscored Native RSS / Pending Shortcut */}
+            <button
+              type="button"
+              aria-current={isUnscoredView ? "page" : undefined}
+              onClick={() =>
+                selectTopLevelFilter("all", { triage_status: "unscored" })
+              }
+              className={cn(
+                "flex w-full items-center gap-2.5 rounded-xl border px-2.5 py-2 text-[13px] transition-colors",
+                isUnscoredView
+                  ? "border-[var(--glass-acc)]/40 bg-[var(--glass-soft-hover)] font-semibold text-[var(--glass-acc)]"
+                  : "border-[var(--glass-inner-line)] bg-[var(--glass-soft)] text-[var(--glass-ink)] hover:bg-[var(--glass-soft-hover)]",
+              )}
+            >
+              <CircleDashed className="h-4 w-4 shrink-0 text-[var(--glass-sub)]" />
+              <span className="flex-1 truncate text-left">
+                {t("panel.nav.unscored")}
+              </span>
+              {typeof unscoredBadge === "number" && (
+                <span className="rounded-full bg-[var(--glass-panel-strong)] px-1.5 py-0.5 text-[10.5px] font-semibold leading-none tabular-nums text-[var(--glass-sub)]">
+                  {unscoredBadge}
                 </span>
               )}
             </button>

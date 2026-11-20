@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ChevronDown,
   ChevronLeft,
@@ -22,6 +22,7 @@ import { ItemTimestamps } from "@/components/panel/item-timestamps";
 import {
   extractRawMeta,
   formatCompactNumber,
+  isPluginSourceFeed,
   selectTopPicks,
 } from "@/components/panel/panel-utils";
 import { useArticleList } from "@/hooks/use-article-list";
@@ -106,6 +107,7 @@ export function ArticleDrawer() {
     shouldFetchArticle,
   );
 
+  const isOpen = selectedArticleId !== null;
   const article: Item | null =
     (!isOverviewRoute && isStarredMode
       ? (fetchedArticle ?? storeArticle)
@@ -121,10 +123,75 @@ export function ArticleDrawer() {
     article !== null &&
     article.id > 0 &&
     (!isStarredMode || fetchedArticle !== undefined);
-  const feed = article ? getFeedById(article.feed_id) : null;
-  const bookmark = article ? getBookmarkByItemId(article.id) : null;
-  const starred = article ? isItemStarred(article.id) : false;
-  const safeArticleLink = article ? toSafeExternalUrl(article.link) : null;
+
+  // Retain the last displayed article while the drawer slides closed so the
+  // body does not disappear on frame 0 before the exit transition finishes.
+  const [retainedSnapshot, setRetainedSnapshot] = useState<{
+    article: Item;
+    unread: boolean;
+    canToggleRead: boolean;
+    hasItemFetchedTime: boolean;
+  } | null>(null);
+  const clearTimerRef = useRef<number | null>(null);
+
+  const clearRetainedSnapshot = useCallback(() => {
+    if (clearTimerRef.current !== null) {
+      window.clearTimeout(clearTimerRef.current);
+      clearTimerRef.current = null;
+    }
+    setRetainedSnapshot(null);
+  }, []);
+
+  useEffect(() => {
+    if (isOpen && article) {
+      if (clearTimerRef.current !== null) {
+        window.clearTimeout(clearTimerRef.current);
+        clearTimerRef.current = null;
+      }
+      setRetainedSnapshot({
+        article,
+        unread: readArticle?.unread ?? article.unread,
+        canToggleRead,
+        hasItemFetchedTime,
+      });
+    }
+  }, [isOpen, article, readArticle?.unread, canToggleRead, hasItemFetchedTime]);
+
+  // Fallback cleanup when reduced-motion disables CSS transitions and
+  // transitionend / onOpenChangeComplete may complete synchronously or be skipped.
+  useEffect(() => {
+    if (!isOpen && retainedSnapshot !== null) {
+      clearTimerRef.current = window.setTimeout(() => {
+        clearTimerRef.current = null;
+        setRetainedSnapshot(null);
+      }, 260);
+      return () => {
+        if (clearTimerRef.current !== null) {
+          window.clearTimeout(clearTimerRef.current);
+          clearTimerRef.current = null;
+        }
+      };
+    }
+    return undefined;
+  }, [isOpen, retainedSnapshot]);
+
+  const displayArticle = isOpen ? article : (retainedSnapshot?.article ?? null);
+  const displayUnread = isOpen
+    ? (readArticle?.unread ?? false)
+    : (retainedSnapshot?.unread ?? false);
+  const displayCanToggleRead = isOpen
+    ? canToggleRead
+    : (retainedSnapshot?.canToggleRead ?? false);
+  const displayHasItemFetchedTime = isOpen
+    ? hasItemFetchedTime
+    : (retainedSnapshot?.hasItemFetchedTime ?? false);
+
+  const feed = displayArticle ? getFeedById(displayArticle.feed_id) : null;
+  const bookmark = displayArticle ? getBookmarkByItemId(displayArticle.id) : null;
+  const starred = displayArticle ? isItemStarred(displayArticle.id) : false;
+  const safeArticleLink = displayArticle
+    ? toSafeExternalUrl(displayArticle.link)
+    : null;
 
   const [originalToggleState, setOriginalToggleState] = useState<{
     articleId: number;
@@ -132,10 +199,11 @@ export function ArticleDrawer() {
   } | null>(null);
 
   const defaultOriginalOpen = Boolean(
-    article && (!article.ai_summary.trim() || !article.source_id),
+    displayArticle &&
+      (!displayArticle.ai_summary.trim() || !displayArticle.source_id),
   );
   const isOriginalOpen =
-    article && originalToggleState?.articleId === article.id
+    displayArticle && originalToggleState?.articleId === displayArticle.id
       ? originalToggleState.open
       : defaultOriginalOpen;
 
@@ -204,8 +272,13 @@ export function ArticleDrawer() {
   };
 
   const handleOpenFeed = () => {
-    if (!article || article.feed_id <= 0) return;
-    setSelectedFeed(article.feed_id);
+    if (!displayArticle || displayArticle.feed_id <= 0) return;
+    const isUnscoredRss =
+      feed && !feed.ai_enabled && !isPluginSourceFeed(feed.link);
+    setSelectedFeed(
+      displayArticle.feed_id,
+      isUnscoredRss ? { triage_status: "all" } : undefined,
+    );
   };
 
   const getLinkDomain = (url: string) => {
@@ -229,8 +302,8 @@ export function ArticleDrawer() {
     });
 
   const rawMeta = useMemo(
-    () => (article ? extractRawMeta(article.raw_meta) : null),
-    [article],
+    () => (displayArticle ? extractRawMeta(displayArticle.raw_meta) : null),
+    [displayArticle],
   );
 
   const metricCells = useMemo(() => {
@@ -277,13 +350,21 @@ export function ArticleDrawer() {
   }, [rawMeta, t]);
 
   return (
-    <Sheet open={selectedArticleId !== null} onOpenChange={handleOpenChange}>
+    <Sheet
+      open={isOpen}
+      onOpenChange={handleOpenChange}
+      onOpenChangeComplete={(open) => {
+        if (!open) {
+          clearRetainedSnapshot();
+        }
+      }}
+    >
       <SheetContent
         side="right"
         className="np-drawer-glass border-0 p-0 data-[side=right]:w-full data-[side=right]:sm:max-w-[max(740px,54vw)]"
         showCloseButton={false}
       >
-        {article && (
+        {displayArticle && (
           <div className="flex h-full flex-col">
             {/* Sticky Glass Header Action Bar */}
             <div className="np-header-glass flex shrink-0 items-center justify-between gap-2 px-4 py-3 sm:px-6">
@@ -292,15 +373,15 @@ export function ArticleDrawer() {
                   variant="outline"
                   size="sm"
                   onClick={handleToggleRead}
-                  disabled={!canToggleRead}
+                  disabled={!displayCanToggleRead}
                   className="h-8 gap-1.5 rounded-xl border-[var(--glass-border)] bg-[var(--glass-panel)] px-2.5 text-xs font-medium text-[var(--glass-ink)]"
                 >
-                  {(readArticle?.unread ?? false) ? (
+                  {displayUnread ? (
                     <Circle className="h-3.5 w-3.5 text-[var(--glass-sub)]" />
                   ) : (
                     <CircleCheck className="h-3.5 w-3.5 text-[var(--glass-acc)]" />
                   )}
-                  {(readArticle?.unread ?? false)
+                  {displayUnread
                     ? t("article.action.markRead")
                     : t("article.action.markUnread")}
                 </Button>
@@ -351,7 +432,7 @@ export function ArticleDrawer() {
               </div>
 
               <SheetTitle className="sr-only">
-                {article.title || article.content.slice(0, 100)}
+                {displayArticle.title || displayArticle.content.slice(0, 100)}
               </SheetTitle>
 
               <div className="flex shrink-0 items-center gap-1">
@@ -393,35 +474,35 @@ export function ArticleDrawer() {
             <ScrollArea className="min-h-0 flex-1">
               <article className="min-w-0 space-y-5 px-5 py-6 sm:px-10 sm:py-7">
                 {/* 1. Metadata Strip */}
-                <TriageMetadata article={article} />
+                <TriageMetadata article={displayArticle} />
 
                 {/* 2. Title & Source / Author */}
                 <div className="space-y-3">
                   <h1 className="text-[22px] font-bold leading-[1.35] tracking-tight text-[var(--glass-ink)] sm:text-[26px]">
-                    {article.title || article.content.slice(0, 100)}
+                    {displayArticle.title || displayArticle.content.slice(0, 100)}
                   </h1>
 
                   <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5 text-xs text-[var(--glass-sub)]">
-                    {article.author && (
+                    {displayArticle.author && (
                       <span className="font-semibold text-[var(--glass-ink)]">
-                        {article.author}
+                        {displayArticle.author}
                       </span>
                     )}
 
-                    {article.feed_id > 0 ? (
+                    {displayArticle.feed_id > 0 ? (
                       <button
                         type="button"
                         onClick={handleOpenFeed}
                         className="inline-flex max-w-52 items-center gap-1.5 rounded-lg bg-[var(--glass-soft)] px-2 py-1 font-medium text-[var(--glass-sub)] transition-colors hover:bg-[var(--glass-soft-hover)] hover:text-[var(--glass-ink)]"
                       >
-                        {feed && !article.source_id && (
+                        {feed && !displayArticle.source_id && (
                           <FeedFavicon
                             src={getFaviconUrl(feed.link, feed.site_url)}
                             className="h-3.5 w-3.5 rounded-sm"
                           />
                         )}
                         <span className="truncate">
-                          {article.source_id ||
+                          {displayArticle.source_id ||
                             feed?.name ||
                             bookmark?.feed_name ||
                             t("common.unknown")}
@@ -430,7 +511,7 @@ export function ArticleDrawer() {
                     ) : (
                       <span className="inline-flex max-w-52 items-center gap-1.5 rounded-lg bg-[var(--glass-soft)] px-2 py-1 font-medium text-[var(--glass-sub)]">
                         <span className="truncate">
-                          {article.source_id ||
+                          {displayArticle.source_id ||
                             bookmark?.feed_name ||
                             t("common.unknown")}
                         </span>
@@ -438,8 +519,8 @@ export function ArticleDrawer() {
                     )}
 
                     <ItemTimestamps
-                      item={article}
-                      showFetched={hasItemFetchedTime}
+                      item={displayArticle}
+                      showFetched={displayHasItemFetchedTime}
                       variant="detailed"
                     />
 
@@ -457,14 +538,14 @@ export function ArticleDrawer() {
                 </div>
 
                 {/* 3. Highlighted AI Summary Glass Card */}
-                {article.ai_summary.trim() && (
+                {displayArticle.ai_summary.trim() && (
                   <section className="rounded-2xl border border-[var(--glass-acc)]/25 bg-[var(--glass-soft)] p-4 sm:p-5">
                     <div className="mb-2 flex items-center gap-2 text-xs font-bold tracking-wide text-[var(--glass-acc)]">
                       <Sparkles className="h-3.5 w-3.5" />
                       <span>{t("panel.drawer.aiSummaryTitle")}</span>
                     </div>
                     <p className="text-[14.5px] leading-[1.75] text-[var(--glass-ink)]">
-                      {article.ai_summary}
+                      {displayArticle.ai_summary}
                     </p>
                   </section>
                 )}
@@ -476,7 +557,7 @@ export function ArticleDrawer() {
                     aria-expanded={isOriginalOpen}
                     onClick={() =>
                       setOriginalToggleState({
-                        articleId: article.id,
+                        articleId: displayArticle.id,
                         open: !isOriginalOpen,
                       })
                     }
@@ -499,16 +580,16 @@ export function ArticleDrawer() {
                   <div className="np-orig-collapse" data-open={isOriginalOpen}>
                     <div>
                       <div className="border-t border-[var(--glass-inner-line)] px-4 py-4 sm:px-5">
-                        {article.source_id ? (
+                        {displayArticle.source_id ? (
                           <div className="whitespace-pre-wrap break-words text-[14px] leading-[1.75] text-[var(--glass-ink)]">
-                            {article.content}
+                            {displayArticle.content}
                           </div>
                         ) : (
                           <div
                             className="typeset typeset-article min-w-0 max-w-none"
                             dangerouslySetInnerHTML={{
                               __html: processArticleContent(
-                                article.content,
+                                displayArticle.content,
                                 safeArticleLink ?? undefined,
                               ),
                             }}

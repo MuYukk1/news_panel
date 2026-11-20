@@ -13,6 +13,7 @@ export interface Feed {
   link: string;
   site_url?: string;
   suspended: boolean;
+  ai_enabled: boolean;
   proxy?: string;
   created_at: number;
   updated_at: number;
@@ -140,6 +141,7 @@ export interface UpdateFeedRequest {
   link?: string;
   site_url?: string;
   suspended?: boolean;
+  ai_enabled?: boolean;
   proxy?: string;
 }
 
@@ -151,6 +153,8 @@ export interface ValidateFeedRequest {
 export interface DiscoveredFeed {
   title: string;
   link: string;
+  site_url?: string;
+  group_name?: string;
 }
 
 export interface ValidateFeedResponse {
@@ -174,8 +178,11 @@ export interface MarkItemsReadRequest {
   ids: number[];
 }
 
+export type ItemTriageQueryStatus = Item["triage_status"] | "unscored";
+
 export interface ListItemsParams {
-  triage_status?: Item["triage_status"];
+  triage_status?: ItemTriageQueryStatus;
+  scored?: boolean;
   domain?: string;
   priority?: Item["priority"];
   min_score?: number;
@@ -188,7 +195,8 @@ export interface ListItemsParams {
 }
 
 export interface ListBookmarksParams {
-  triage_status?: Item["triage_status"];
+  triage_status?: ItemTriageQueryStatus;
+  scored?: boolean;
   domain?: string;
   priority?: Item["priority"];
   min_score?: number;
@@ -241,6 +249,11 @@ export interface PluginHeartbeat {
   error_message: string | null;
   timestamp: string;
   updated_at: string;
+  enabled: boolean;
+}
+
+export interface UpdatePluginRequest {
+  enabled: boolean;
 }
 
 // OIDC

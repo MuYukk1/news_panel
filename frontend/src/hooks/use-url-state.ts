@@ -119,11 +119,15 @@ export function useUrlState() {
   );
 
   const setSelectedFeed = useCallback(
-    (feedId: number | null) => {
+    (
+      feedId: number | null,
+      triagePatch?: Partial<Omit<TriageSearch, "article">>,
+    ) => {
       navigateToList({
         feedId,
         groupId: null,
         articleId: null,
+        triagePatch: { ...triagePatch, feed_id: undefined },
       });
     },
     [navigateToList],

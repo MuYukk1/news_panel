@@ -1,4 +1,4 @@
-import { Cpu, Globe, Tag, TrendingUp } from "lucide-react";
+import { CircleDashed, Cpu, Globe, Tag, TrendingUp } from "lucide-react";
 import type { Item } from "@/lib/api";
 import { useI18n, type TranslationKey } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
@@ -30,8 +30,12 @@ const PRIORITY_LABEL_KEYS: Record<Item["priority"], TranslationKey> = {
   low: "panel.priority.low",
 };
 
-const TRIAGE_LABEL_KEYS: Record<Item["triage_status"], TranslationKey> = {
+const TRIAGE_LABEL_KEYS: Record<
+  Item["triage_status"] | "unscored",
+  TranslationKey
+> = {
   kept: "panel.triage.kept",
+  unscored: "panel.triage.unscored",
   filtered: "panel.triage.filtered",
   pending: "panel.triage.pending",
   failed: "panel.triage.failed",
@@ -131,7 +135,7 @@ export function PriorityPill({
 }
 
 interface TriageStatusPillProps {
-  status: Item["triage_status"];
+  status: Item["triage_status"] | "unscored";
   className?: string;
 }
 
@@ -162,6 +166,21 @@ export function TriageStatusPill({ status, className }: TriageStatusPillProps) {
         style={{ backgroundColor: color }}
       />
       {t(TRIAGE_LABEL_KEYS[status] ?? "panel.triage.pending")}
+    </span>
+  );
+}
+
+export function UnscoredPill({ className }: { className?: string }) {
+  const { t } = useI18n();
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1 rounded-full border border-[var(--glass-inner-line)] bg-[var(--glass-soft)] px-2.5 py-0.5 text-[11px] font-medium leading-4 text-[var(--glass-sub)]",
+        className,
+      )}
+    >
+      <CircleDashed className="h-3 w-3 text-[var(--glass-faint)]" />
+      <span>{t("panel.score.unscored")}</span>
     </span>
   );
 }

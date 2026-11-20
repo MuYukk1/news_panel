@@ -90,6 +90,19 @@ export function useUpdateFeed() {
       const res = await feedAPI.update(id, data);
       return res.data!;
     },
+    onMutate: async ({ id, ...patch }) => {
+      await qc.cancelQueries({ queryKey: queryKeys.feeds.list() });
+      const prevFeeds = qc.getQueryData<Feed[]>(queryKeys.feeds.list());
+      qc.setQueryData<Feed[]>(queryKeys.feeds.list(), (old) =>
+        old?.map((f) => (f.id === id ? { ...f, ...patch } : f)),
+      );
+      return { prevFeeds };
+    },
+    onError: (_error, _variables, context) => {
+      if (context?.prevFeeds) {
+        qc.setQueryData(queryKeys.feeds.list(), context.prevFeeds);
+      }
+    },
     onSuccess: (updated) => {
       qc.setQueryData(queryKeys.feeds.list(), (old: Feed[] | undefined) =>
         old?.map((f) => (f.id === updated.id ? updated : f)),

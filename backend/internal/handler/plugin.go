@@ -203,6 +203,15 @@ func (h *Handler) ingest(c *gin.Context) {
 		badRequestError(c, "source_id, source_type and 1..100 items are required")
 		return
 	}
+	enabled, err := h.store.IsPluginEnabled(c.Request.Context(), req.SourceID)
+	if err != nil {
+		internalError(c, err, "check plugin enabled")
+		return
+	}
+	if !enabled {
+		c.JSON(http.StatusOK, ingestResponse{Errors: []ingestError{}})
+		return
+	}
 	response := ingestResponse{Errors: []ingestError{}}
 	for _, raw := range req.Items {
 		input, err := normalizeIngestItem(req, raw)
@@ -285,7 +294,46 @@ func (h *Handler) heartbeat(c *gin.Context) {
 		internalError(c, err, "save heartbeat")
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"status": "ok", "server_time": time.Now().UTC().Format(time.RFC3339Nano)})
+	enabled, err := h.store.IsPluginEnabled(c.Request.Context(), req.SourceID)
+	if err != nil {
+		internalError(c, err, "check plugin enabled")
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"status":      "ok",
+		"server_time": time.Now().UTC().Format(time.RFC3339Nano),
+		"paused":      !enabled,
+	})
+}
+
+type updatePluginRequest struct {
+	Enabled *bool `json:"enabled"`
+}
+
+func (h *Handler) updatePlugin(c *gin.Context) {
+	sourceID := strings.TrimSpace(c.Param("source_id"))
+	if !validPluginString(sourceID, 128) {
+		badRequestError(c, "invalid source_id")
+		return
+	}
+
+	var req updatePluginRequest
+	if err := c.ShouldBindJSON(&req); err != nil || req.Enabled == nil {
+		badRequestError(c, "enabled is required")
+		return
+	}
+
+	hb, err := h.store.SetPluginEnabled(c.Request.Context(), sourceID, *req.Enabled)
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			notFoundError(c, "plugin")
+			return
+		}
+		internalError(c, err, "update plugin")
+		return
+	}
+
+	dataResponse(c, hb)
 }
 
 func (h *Handler) listHeartbeats(c *gin.Context) {

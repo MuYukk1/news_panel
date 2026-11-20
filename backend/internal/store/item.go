@@ -21,6 +21,7 @@ type ListItemsParams struct {
 	Domain        string
 	Priority      string
 	MinScore      *int
+	Scored        *bool
 	FeedID        *int64
 	GroupID       *int64
 	Unread        *bool

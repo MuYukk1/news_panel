@@ -14,6 +14,7 @@ import {
   PriorityPill,
   SignalBars,
   TriageStatusPill,
+  UnscoredPill,
 } from "@/components/panel/signal-bars";
 import type { Item } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
@@ -50,6 +51,8 @@ export function ArticleItem({
   const isSelected = selectedArticleId === article.id;
   const safeArticleLink = toSafeExternalUrl(article.link);
   const isFiltered = article.triage_status === "filtered";
+  const isUnscored =
+    article.ai_score === null && article.triage_status !== "filtered";
   const summaryText =
     article.ai_summary.trim() ||
     (article.source_id
@@ -121,11 +124,20 @@ export function ArticleItem({
 
           {/* Right Score & Priority Column */}
           <div className="hidden shrink-0 flex-col items-end gap-1.5 pt-0.5 sm:flex">
-            <PriorityPill
-              priority={article.priority}
-              score={article.ai_score}
-            />
-            <SignalBars score={article.ai_score} priority={article.priority} />
+            {isUnscored ? (
+              <UnscoredPill />
+            ) : (
+              <>
+                <PriorityPill
+                  priority={article.priority}
+                  score={article.ai_score}
+                />
+                <SignalBars
+                  score={article.ai_score}
+                  priority={article.priority}
+                />
+              </>
+            )}
           </div>
         </div>
 
@@ -154,14 +166,19 @@ export function ArticleItem({
         {/* Meta Footer */}
         <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11.5px] text-[var(--glass-faint)]">
           <DomainPill domain={article.domain} />
-          {article.triage_status !== "kept" && (
+          {(article.triage_status === "filtered" ||
+            article.triage_status === "failed") && (
             <TriageStatusPill status={article.triage_status} />
           )}
           <span className="sm:hidden">
-            <PriorityPill
-              priority={article.priority}
-              score={article.ai_score}
-            />
+            {isUnscored ? (
+              <UnscoredPill />
+            ) : (
+              <PriorityPill
+                priority={article.priority}
+                score={article.ai_score}
+              />
+            )}
           </span>
 
           <span className="inline-flex max-w-[180px] items-center gap-1.5 truncate font-medium text-[var(--glass-sub)]">
