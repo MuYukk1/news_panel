@@ -64,8 +64,7 @@
 | `AI_DECISION_L3_PRIORITIES` | `string`（默认 `critical,high,normal`） | 逗号分隔的优先级白名单：仅 L2 判定 `action=pass` 且 `priority` 命中此集合的条目才送入 L3 主模型 |
 | `AI_DECISION_LOW_ACTION` | `string`（默认 `keep_unscored`） | L2 判 `pass` 但优先级未命中 `AI_DECISION_L3_PRIORITIES`（例如 `low`）时的动作：`keep_unscored`（`triage_status=kept`, `ai_score=nil`, `tags=["l2-decision-bypass"]`，落入 `P2-01`「未打分」分桶不污染高分精选）或 `filter`（`triage_status=filtered`, `tags=["l2-decision-low-filtered"]`） |
 | `AI_DECISION_FALLBACK_MODE` | `string`（默认 `skip_to_l3`） | L2 网络/超时/解析失败时的降级策略：`skip_to_l3`（fail-open 直接交给 L3，宁可多花一次 L3 也不漏突发要闻） \| `keep_l1`（直接采用 L1 结果并标 `l2-decision-fallback`） \| `fail`（返回脱敏错误记为 `failed`） |
-| `AI_RSS_ENABLED` | `bool`（默认 `true`） | 原生 RSS 接入 AI 管线的全局总开关：仅当 `AI_RSS_ENABLED=true` **且**单个 RSS 源在 `/feeds` 开启 `ai_enabled=true` 时才评估；设为 `false` 可一键全局关闭全部 RSS AI 筛选（不改数据库各源设置） |
-| `AI_RSS_MAX_ITEMS_PER_PULL` | `int`（默认 `20`，`0` 表示不限制） | 单个 `ai_enabled=true` RSS 源单次拉取最多送入 AI 评估的新条目数（按最新优先）；超出上限的新条目直接以 `triage_status='kept'`、`ai_score=NULL` 落入「未打分」，防止大流量/首次拉取 RSS 瞬间打爆模型额度 |
+| `AI_RSS_MAX_ITEMS_PER_PULL` | `int`（默认 `20`，`0` 表示不限制） | 单个已开启 `ai_enabled=true` 的 RSS 源单次拉取最多送入 AI 评估的新条目数（按最新优先）；超出上限的新条目直接以 `triage_status='kept'`、`ai_score=NULL` 落入「未打分」，防止大流量/首次拉取 RSS 瞬间打爆模型额度 |
 
 > **关键边界**：若 `AI_ENABLED=false` 或主模型 `AI_PROVIDER=l1`，整条 AI 管线按原约定退化为 L1-only（不单独跑 L2）；若主模型已配置（`openai` / `cli`），而 `AI_DECISION_ENABLED=false` 或未配置 Decision 凭证/URL，则跳过 L2、直接由 L1 → L3，并在启动日志中打印清晰 `INFO` 提示（例如 `"ai L2 decision gate disabled/unconfigured; bypassing L2 directly to L3"`）。
 
@@ -176,8 +175,8 @@
 2. `backend/internal/pull/puller.go`：
    - 新增 `SetEvaluator(eval triage.TriageEvaluator)`（不破坏 `pull.New(st, cfg)` 现有签名）；
    - 在 `pullFeed` 中：
-     - 当 `!feed.AIEnabled || p.evaluator == nil || !rssAIEnabled`（`AI_RSS_ENABLED=false` 全局总开关关闭时）：完全保持原有逻辑（调用 `BatchCreateItemsIgnore`，零 AI 消耗，归入 `unscored`）；
-     - 当 `feed.AIEnabled && p.evaluator != nil && rssAIEnabled`：按发布时间新→旧最多取前 `AI_RSS_MAX_ITEMS_PER_PULL` 条（默认 20 条，超出部分仍走 `BatchCreateItemsIgnore` 保留为「未打分」不丢失也不爆额）调用 `BatchCreateItemsForTriage` 插入新条目，逐条构造 `triage.Input`（`SourceType: "rss"`, `ExternalID: item.GUID`, `URL: item.Link`, `Title: item.Title`, `Content: item.Content`, `Author: feed.Name`, `PublishedAt: time.Unix(item.PubDate, 0).UTC()`）调用 `p.evaluator.Evaluate(evalCtx, input)` 并 `p.store.UpdateTriage(evalCtx, created.ID, result)`；若单条评估失败或校验失败，记录告警并将该条更新为 `triage_status = 'failed'`（不中断本源其余新条目，也不影响 RSS 抓取状态成功记录）。
+     - 当 `!feed.AIEnabled || p.evaluator == nil`：完全保持原有逻辑（调用 `BatchCreateItemsIgnore`，零 AI 消耗，归入 `unscored`）；
+     - 当 `feed.AIEnabled && p.evaluator != nil`：按发布时间新→旧最多取前 `AI_RSS_MAX_ITEMS_PER_PULL` 条（默认 20 条，超出部分仍走 `BatchCreateItemsIgnore` 保留为「未打分」不丢失也不爆额）调用 `BatchCreateItemsForTriage` 插入新条目，逐条构造 `triage.Input`（`SourceType: "rss"`, `ExternalID: item.GUID`, `URL: item.Link`, `Title: item.Title`, `Content: item.Content`, `Author: feed.Name`, `PublishedAt: time.Unix(item.PubDate, 0).UTC()`）调用 `p.evaluator.Evaluate(evalCtx, input)` 并 `p.store.UpdateTriage(evalCtx, created.ID, result)`；若单条评估失败或校验失败，记录告警并将该条更新为 `triage_status = 'failed'`（不中断本源其余新条目，也不影响 RSS 抓取状态成功记录）。
    - 注意：`pullFeed` 中 RSS 评估使用合理超时保护（或继承 `ctx`），不因单条 AI 慢请求卡死整个 puller 信号量。
 3. `backend/cmd/fusion/main.go`：
    - 共用同一个 `eval := ai.NewFromEnv()` 实例注入 `puller.SetEvaluator(eval)` 与 `handler.New(st, cfg, puller, eval)`，确保外置插件与开启 AI 的 RSS 源共享同一份 CLI 冷却锁与统计计数。
@@ -225,7 +224,7 @@
   - L2 判 `pass` 且命中 `critical / high / normal`：携带 L2 初判线索进入 L3 完成打分与中文摘要；
   - L2 调用异常/超时/畸形 JSON：按 `AI_DECISION_FALLBACK_MODE` 处理（默认 `skip_to_l3` fail-open 不丢要闻），且错误信息严格脱敏不泄露 `AI_DECISION_API_KEY`。
 - [ ] **双云端适配器就绪**：`openai` 与 `http_json` 两种 `DecisionProvider` 均通过 `httptest.Server` 单元测试验证（含自定义鉴权头、包装 JSON 响应、`keep` 布尔兼容、超长响应截断与脱敏）。
-- [ ] **原生 RSS `ai_enabled` 闭环与防洪护栏**：`puller` 对 `ai_enabled=false` 的 RSS 源（或 `AI_RSS_ENABLED=false` 全局关闭时）不触发评估（零消耗）；对 `ai_enabled=true` 的 RSS 源仅对新插入条目运行三级评估并受 `AI_RSS_MAX_ITEMS_PER_PULL` 单轮上限保护（超限条目保留为未打分），重复拉取同一 GUID 不重复消耗 AI。
+- [ ] **原生 RSS `ai_enabled` 闭环与防洪护栏**：`puller` 对 `ai_enabled=false` 的 RSS 源不触发评估（零消耗）；对 `ai_enabled=true` 的 RSS 源仅对新插入条目运行三级评估并受 `AI_RSS_MAX_ITEMS_PER_PULL` 单轮上限保护（超限条目保留为未打分），重复拉取同一 GUID 不重复消耗 AI。
 - [ ] **观测接口与部署透传**：`GET /api/v1/ai/stats` 需要读者鉴权（插件 Token 返回 `401`），返回准确计数且零密钥泄露；`deploy/docker-compose.yml` 与 `deploy/.env.example` 已补齐可选 `AI_DECISION_*` 变量。
 - [ ] **全量测试通过 & 边界纯净**：
   ```bash
