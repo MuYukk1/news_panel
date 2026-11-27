@@ -65,15 +65,20 @@
 修复 v0.1 实战暴露的 UI 与 RSS 兼容痛点，构建低开销高精度的三级递进 AI 分拣管线与用户个性化反馈闭环，并验证冻结 v1 契约接入第二个外置信源（Telegram）。
 
 ### 计划任务拆解
-- **`P2-01`（体验与 RSS 兼容收口 — 优先开工）**：
+- **`P2-01`（体验与 RSS 兼容收口 — ✅ `DONE`）**：
   - 修复阅读抽屉打开/关闭卡顿与关闭先闪白问题；
   - 原生 RSS 未打分条目归入独立「未打分」分桶（方案 A：默认不走 AI，预留/落地单源 `ai_enabled` 开关）；
   - 订阅源与外置插件液态玻璃启停开关；
   - 高级筛选增加「按来源筛选」；
   - 多源探测与 OPML 导入升级为多选批量导入（支持直接粘贴 GitHub `.opml` 链接）。
-- **`P2-02`（三级 AI 分拣管线）**：L1 程序规则拦截 → L2 云端轻量 Decision 门控（可插拔 HTTP Adapter，具体模型 `[TBD]`）→ L3 主模型评分/摘要/复核，显著降低主模型调用量。
-- **`P2-03`（用户反馈与有界个性化档案闭环）**：前端修改优先级 + 可选文字反馈 → SQLite 反馈表（关联轻量 `user_id`）→ 空闲窗口周期性压缩归纳为有长度上限的结构化偏好档案（支持查看/手工微调/回滚）→ 注入 L2 与 L3 判定。
-- **`P2-04`（外置 Telegram 信源插件）**：兼容公开频道与个人号监听私有群，复用 v1 `/ingest` + `/heartbeat` 契约，按需评估轻量插件配置界面。
+- **`P2-02`（三级 AI 分拣管线底座 — ✅ `DONE`）**：L1 程序规则拦截 → L2 云端轻量 Decision 门控（可插拔 HTTP Adapter，支持显式关闭/自动跳过）→ L3 主模型评分/摘要/复核，打通 RSS `ai_enabled` 闭环与 `/api/v1/ai/stats`。
+- **`P2-02a`（单源刷新 30s 超时热修 — ✅ `DONE`）**：解耦 RSS HTTP 抓取超时（`PullTimeout` 30s）与 AI 分拣超时（单源后台刷新放宽至 15 分钟并增加同源并发刷新去重守卫），解决 L3 CLI 冷却期下手动/首次刷新被 30s 截断标为 `failed` 的线上缺陷。
+- **`P2-02b`（L2 原生多厂商 Decisions API 适配器与轻量 AI 设置面板 — 📋 `TODO`，落实 `DEC-008`）**：
+  - 基于纯 Go 标准库双 Dialect 统一适配 `gemini_decision`（`gemini-decision-1`）、`openai_decision`（`gpt-6-luna`）、`typesafe`（`jev-latest`）、`cloudflare_clef`（`@cf/cloudflare/clef-flash`，支持 Cloudflare Account ID），兼容既有 `openai` / `http_json` / `off`；
+  - 新增 `ai_settings` 单行表与独立 `/api/v1/ai/settings`（写密钥不回传明文、脱敏展示、SSRF 与防重定向保护）及 `POST /api/v1/ai/settings/test` 一键连通性测试；
+  - `Evaluator` / `Puller` 零重启热更新（`atomic.Pointer` / `atomic.Int64`），并在 `SettingsDialog` 新增轻量「AI 分拣」Tab（不触碰插件市场 UI 等 Non-Goals）。
+- **`P2-03`（用户反馈与有界个性化档案闭环）**：前端修改优先级 + 可选文字反馈 → SQLite 反馈表（关联轻量 `user_id`）→ 空闲窗口周期性压缩归纳为有长度上限的结构化偏好档案（支持查看/手工微调/回滚）→ 注入 `P2-02b` 统一 L2 多问构造器与 L3 判定。
+- **`P2-04`（外置 Telegram 信源插件 — `DEC-009` 拍板后可与 `P2-02b`/`P2-03` 并行）**：兼容公开频道与个人号监听私有群，复用 v1 `/ingest` + `/heartbeat` 契约，文件边界完全独立（`plugins/telegram/**`）。
 
 ### 🚦 Gate 2（人工拍板门禁）
 用户验收三级管线降本与准确度、个性化档案演进效果、Telegram 实时接入表现与容器内存占用后，方可进入 Phase 3（Linux.do / NodeSeek / QQ 群与外部高优通知等）。

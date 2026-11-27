@@ -103,7 +103,15 @@ func (p *Puller) pullAll(ctx context.Context) {
 func (p *Puller) pullFeed(ctx context.Context, feed *model.Feed) {
 	p.logger.Debug("pulling feed", "feed_id", feed.ID, "feed_name", feed.Name)
 
-	result, err := FetchAndParse(ctx, feed, p.timeout, p.config.AllowPrivateFeeds)
+	fetchCtx := ctx
+	var cancelFetch context.CancelFunc
+	if p.timeout > 0 {
+		fetchCtx, cancelFetch = context.WithTimeout(ctx, p.timeout)
+	}
+	result, err := FetchAndParse(fetchCtx, feed, p.timeout, p.config.AllowPrivateFeeds)
+	if cancelFetch != nil {
+		cancelFetch()
+	}
 	checkedAt := time.Now().Unix()
 	if err != nil {
 		httpStatus := 0

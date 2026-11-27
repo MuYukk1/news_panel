@@ -6,9 +6,9 @@
 
 ## 1. 当前项目快照
 
-- **当前所处阶段**：**Phase 2（v0.2 体验收口、三级处理管线与个性化闭环 —— Gate 1 已于 2026-11-20 正式批准）**
-- **代码仓库现状**：Phase 1（`P1-01`–`P1-04`）及 Phase 2 的 **`P2-01`**、**`P2-02`**（三级递进 AI 管线 + 可选/可关闭 L2 云端门控 + RSS `ai_enabled` 单源闭环 + `/api/v1/ai/stats`）均已 `DONE` 并合入 `main`（回滚锚点 `baseline-pre-p2-02` / `0db31f3`）。
-- **协同与派发策略**：`P2-02` 合入推送后将触发 GHCR 自动构建最新镜像；下一步由 LEAD 按序拆出并派发 `P2-03`（用户优先级反馈与有界个性化档案闭环）与 `P2-04`（Telegram 插件）。
+- **当前所处阶段**：**Phase 2（v0.2 体验收口、三级处理管线与个性化闭环 —— Gate 1 已于 2026-11-20 正式批准，`DEC-008` 已于 2026-11-27 正式批准）**
+- **代码仓库现状**：Phase 1（`P1-01`–`P1-04`）及 Phase 2 的 **`P2-01`**、**`P2-02`**（三级递进 AI 管线 + 可选/可关闭 L2 云端门控 + RSS `ai_enabled` 单源闭环 + `/api/v1/ai/stats`）、**`P2-02a`**（单源刷新 30s 超时热修与同源刷新去重）均已 `DONE`（回滚锚点 `baseline-pre-p2-02` / `0db31f3`）。
+- **协同与派发策略**：`DEC-008` 与 `P2-02a` 均已完成，当前已正式开放 **`P2-02b`**（L2 原生多厂商 Decisions API 适配器 + 轻量 AI 设置面板，`TODO` 待认领），随后按序推进 **`P2-03`**（用户优先级反馈与有界个性化档案闭环）；**`P2-04`**（Telegram 外置插件）文件边界完全独立，待 `DEC-009` 拍板后可并行派发。
 
 ---
 
@@ -19,7 +19,7 @@
 | [AGENTS.md](../AGENTS.md) | 面向所有 AI 工具的根目录总入口规范：必读顺序、全局红线、`Owned Files` 防冲突边界与必填交付回执 | 全局协作规则或安全红线调整时 |
 | [PRD.md](./PRD.md) | 唯一的需求真理源：产品定位、核心场景、架构/协议原则、资源约束、Non-Goals 与治理红线 | 需求范围或核心约束变更时 |
 | [ROADMAP.md](./ROADMAP.md) | 分阶段演进路径、v0.1 纵向切片定义及各阶段 **Human Gate** 准出条件 | 进入新 Phase 或 Milestone 调整时 |
-| [DECISIONS.md](./DECISIONS.md) | 已确认架构原则（ADR）与 Gate 0 已批准决策（`DEC-001`–`DEC-005`）记录 | 每次用户拍板或产生新架构决策时 |
+| [DECISIONS.md](./DECISIONS.md) | 已确认架构原则（ADR）与已批准决策（`DEC-001`–`DEC-008`）及待拍板项（`DEC-009`–`DEC-010`）记录 | 每次用户拍板或产生新架构决策时 |
 | [PLUGIN_SPEC.md](./PLUGIN_SPEC.md) | **v0.1 双层插件最小契约规范**：`POST /api/v1/ingest`、`POST /api/v1/heartbeat`、`items` AI 字段与内置/外置等价模型 | 契约演进或 Gate 1 冻结 v1 规范时 |
 | [HANDOFF.md](./HANDOFF.md) | 当前工程快照、新成员上手清单与下一步 Gate 待办动作 | 每次阶段切换、重要交接或状态变更时 |
 | [tasks/README.md](../tasks/README.md) | 跨工具双通道调度规范（ZCode/Qoder/Trae 文档交接 & CodexHost 调度）、状态机与合入核验规范 | 调度流程或任务状态流转变更时 |
@@ -53,8 +53,11 @@
 ### Next Human Gate：Gate 2（Phase 2 v0.2 验收门禁）
 - [x] 完成 [tasks/P2-01-ux-rss-source-controls.md](../tasks/P2-01-ux-rss-source-controls.md)（`DONE`，2026-11-21 LEAD 复验合入 `main`）
 - [x] 完成 [tasks/P2-02-three-stage-ai-pipeline.md](../tasks/P2-02-three-stage-ai-pipeline.md)（`DONE`，2026-11-27 LEAD 复验合入 `main`）
+- [x] **DEC-008（2026-11-27 批准）**：锁定 L2 原生决策模型 Tier-1 预设（`gemini_decision`、`openai_decision`、`typesafe`、`cloudflare_clef` + 兼容 `openai`/`http_json`/`off`）、轻量 AI 设置面板与 SQLite `0600` 密钥存储/SSRF 安全策略，以及 `P2-02a → P2-02b → P2-03` 排期
+- [x] 完成 [tasks/P2-02a-feed-refresh-timeout-hotfix.md](../tasks/P2-02a-feed-refresh-timeout-hotfix.md)（`DONE`，2026-11-27 独立复验通过：解耦单源 RSS 抓取与 AI 分拣超时 + 同源刷新去重）
+- [ ] 完成 [tasks/P2-02b-decision-apis-and-ai-settings.md](../tasks/P2-02b-decision-apis-and-ai-settings.md)（`TODO`：L2 多厂商 Decisions API 适配器 + 轻量 AI 设置面板与热更新，已解锁可立即认领）
 - [ ] 拆解并完成 `P2-03`（用户优先级反馈 + 空闲定时归纳有界个性化档案闭环）
-- [ ] 拆解并完成 `P2-04`（外置 Telegram 信源插件，兼容公开频道与个人号私有群）
+- [ ] 拍板 `DEC-009` 后拆解并完成 `P2-04`（外置 Telegram 信源插件，兼容公开频道与个人号私有群，可与 `P2-02b`/`P2-03` 并行）
 - [ ] 用户验收 Phase 2 整体效果并拍板 Gate 2（`DEC-010`）
 
 ---

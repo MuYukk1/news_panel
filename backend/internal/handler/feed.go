@@ -62,7 +62,10 @@ type batchCreateFeedItem struct {
 	SiteURL string `json:"site_url"`
 }
 
-const refreshAllTimeout = 30 * time.Minute
+const (
+	refreshAllTimeout        = 30 * time.Minute
+	singleFeedRefreshTimeout = 15 * time.Minute
+)
 
 func (h *Handler) listFeeds(c *gin.Context) {
 	feeds, err := h.store.ListFeeds()
@@ -112,14 +115,7 @@ func (h *Handler) createFeed(c *gin.Context) {
 	}
 
 	// Trigger initial pull in background.
-	refreshTimeout := time.Duration(h.config.PullTimeout) * time.Second
-	go func(feedID int64) {
-		ctx, cancel := context.WithTimeout(context.Background(), refreshTimeout)
-		defer cancel()
-		if err := h.puller.RefreshFeed(ctx, feedID); err != nil {
-			slog.Warn("initial feed pull failed", "feed_id", feedID, "error", err)
-		}
-	}(feed.ID)
+	h.startFeedRefresh(feed.ID, "initial feed pull failed", false)
 
 	dataResponse(c, feed)
 }
@@ -349,16 +345,62 @@ func (h *Handler) refreshFeed(c *gin.Context) {
 
 	// Trigger refresh in background.
 	// Do not use the request context here: once the handler returns, it may be cancelled.
-	refreshTimeout := time.Duration(h.config.PullTimeout) * time.Second
-	go func(feedID int64) {
-		ctx, cancel := context.WithTimeout(context.Background(), refreshTimeout)
-		defer cancel()
-		if err := h.puller.RefreshFeed(ctx, feedID); err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
-			slog.Warn("refresh feed failed", "feed_id", feedID, "error", err)
-		}
-	}(id)
+	h.startFeedRefresh(id, "refresh feed failed", true)
 
 	c.Status(http.StatusAccepted)
+}
+
+func (h *Handler) feedRefreshTimeout() time.Duration {
+	timeout := singleFeedRefreshTimeout
+	if h.config != nil {
+		if configured := time.Duration(h.config.PullTimeout) * time.Second; configured > timeout {
+			timeout = configured
+		}
+	}
+	return timeout
+}
+
+func (h *Handler) startFeedRefresh(feedID int64, failMsg string, ignoreContextErr bool) {
+	if h.puller == nil || !h.tryStartFeedRefresh(feedID) {
+		return
+	}
+
+	refreshTimeout := h.feedRefreshTimeout()
+	go func(id int64) {
+		defer h.finishFeedRefresh(id)
+
+		ctx, cancel := context.WithTimeout(context.Background(), refreshTimeout)
+		defer cancel()
+
+		err := h.puller.RefreshFeed(ctx, id)
+		if err != nil {
+			if ignoreContextErr && (errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)) {
+				return
+			}
+			slog.Warn(failMsg, "feed_id", id, "error", err)
+		}
+	}(feedID)
+}
+
+func (h *Handler) tryStartFeedRefresh(feedID int64) bool {
+	h.feedRefreshMu.Lock()
+	defer h.feedRefreshMu.Unlock()
+
+	if h.feedRefreshInFlight == nil {
+		h.feedRefreshInFlight = make(map[int64]bool)
+	}
+	if h.feedRefreshInFlight[feedID] {
+		return false
+	}
+
+	h.feedRefreshInFlight[feedID] = true
+	return true
+}
+
+func (h *Handler) finishFeedRefresh(feedID int64) {
+	h.feedRefreshMu.Lock()
+	delete(h.feedRefreshInFlight, feedID)
+	h.feedRefreshMu.Unlock()
 }
 
 func (h *Handler) refreshAllFeeds(c *gin.Context) {
@@ -428,15 +470,8 @@ func (h *Handler) batchCreateFeeds(c *gin.Context) {
 	}
 
 	// Trigger initial pull for each new feed in background.
-	refreshTimeout := time.Duration(h.config.PullTimeout) * time.Second
 	for _, id := range result.CreatedIDs {
-		go func(feedID int64) {
-			ctx, cancel := context.WithTimeout(context.Background(), refreshTimeout)
-			defer cancel()
-			if err := h.puller.RefreshFeed(ctx, feedID); err != nil {
-				slog.Warn("initial feed pull failed", "feed_id", feedID, "error", err)
-			}
-		}(id)
+		h.startFeedRefresh(id, "initial feed pull failed", false)
 	}
 
 	dataResponse(c, gin.H{

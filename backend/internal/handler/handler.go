@@ -33,8 +33,10 @@ type Handler struct {
 	limiter   *loginLimiter
 	lastSweep int64
 
-	refreshAllMu      sync.Mutex
-	refreshAllRunning bool
+	refreshAllMu        sync.Mutex
+	refreshAllRunning   bool
+	feedRefreshMu       sync.Mutex
+	feedRefreshInFlight map[int64]bool
 }
 
 // New uses the pass-through evaluator by default; pass one evaluator to inject P1-03.
@@ -59,15 +61,16 @@ func New(store *store.Store, config *config.Config, puller interface {
 	}
 
 	h := &Handler{
-		evaluator:    evaluator,
-		store:        store,
-		config:       config,
-		passwordHash: passwordHash,
-		feverAPIKey:  deriveFeverAPIKey(config.FeverUsername, config.Password),
-		allowAnonAPI: strings.TrimSpace(config.Password) == "" && strings.TrimSpace(config.OIDCIssuer) == "",
-		puller:       puller,
-		sessions:     make(map[string]int64),
-		limiter:      newLoginLimiter(config.LoginRateLimit, config.LoginWindow, config.LoginBlock),
+		evaluator:           evaluator,
+		store:               store,
+		config:              config,
+		passwordHash:        passwordHash,
+		feverAPIKey:         deriveFeverAPIKey(config.FeverUsername, config.Password),
+		allowAnonAPI:        strings.TrimSpace(config.Password) == "" && strings.TrimSpace(config.OIDCIssuer) == "",
+		puller:              puller,
+		sessions:            make(map[string]int64),
+		limiter:             newLoginLimiter(config.LoginRateLimit, config.LoginWindow, config.LoginBlock),
+		feedRefreshInFlight: make(map[int64]bool),
 	}
 
 	if h.allowAnonAPI {

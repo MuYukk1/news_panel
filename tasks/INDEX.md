@@ -2,7 +2,7 @@
 
 > **当前状态**：**Phase 2（Gate 1 已于 2026-11-20 批准，v0.1 线上闭环验收完成，进入 Phase 2 / v0.2 开发）**
 >
-> **调度策略**：Phase 1（`P1-01`–`P1-04`）与 Phase 2 的 `P2-01`、`P2-02`（三级递进 AI 管线 + 可选/可关闭 L2 门控 + RSS `ai_enabled` 闭环）均已 `DONE` 并合入 `main`。下一步按序拆出 **`P2-03`**（用户优先级反馈与有界个性化档案闭环）与 **`P2-04`**（Telegram 插件）。
+> **调度策略**：Phase 1（`P1-01`–`P1-04`）与 Phase 2 的 `P2-01`、`P2-02`、`P2-02a` 均已 `DONE`。`DEC-008` 已于 2026-11-27 批准：下一步按 **`P2-02b`（`TODO` 原生 L2 Decisions APIs + 轻量 AI 设置面板，已解锁可立即认领）→ `P2-03`（用户优先级反馈与有界个性化档案闭环）** 顺序推进；**`P2-04`**（Telegram 外置插件）待 `DEC-009` 拍板后可并行派发。
 
 ---
 
@@ -16,6 +16,8 @@
 | `P1-04` | 统一浅色磨砂液态玻璃高信号情报工作台前端重构（含双时间显示） | Phase 1 (v0.1) | 通道 A / Antigravity（`feat/p1-04-high-signal-panel` 已合入 `main`） | `DONE` | `frontend/index.html`, `frontend/src/**` | [P1-04-high-signal-panel.md](./P1-04-high-signal-panel.md) |
 | `P2-01` | 阅读抽屉流畅优化、RSS 未打分归类、订阅源/插件开关、来源筛选与 OPML 多选导入 | Phase 2 (v0.2) | 通道 A / Antigravity（`feat/p2-01-ux-rss-source-controls` 已合入 `main`） | `DONE` | `backend/internal/{model,store,handler,pull}/**`, `frontend/src/**` | [P2-01-ux-rss-source-controls.md](./P2-01-ux-rss-source-controls.md) |
 | `P2-02` | 三级递进 AI 分拣管线（L1 → 可选 L2 云端 Decision 门控 → L3 精筛）与 RSS `ai_enabled` 接入 | Phase 2 (v0.2) | 通道 A / Codex（`feat/p2-02-three-stage-ai-pipeline` 已合入 `main`） | `DONE` | `backend/internal/ai/**`, `backend/internal/{store/item,pull/puller,handler}/**`, `backend/cmd/fusion/main.go`, `deploy/{docker-compose.yml,.env.example}` | [P2-02-three-stage-ai-pipeline.md](./P2-02-three-stage-ai-pipeline.md) |
+| `P2-02a` | 单源 RSS 刷新 30s 超时热修（解耦 HTTP 抓取与 AI 分拣超时 + 同源刷新去重） | Phase 2 (v0.2 Hotfix) | Swarm Worker / `hotfix-p202a`（独立 `verifier` 复验通过） | `DONE` | `backend/internal/pull/{puller,puller_test}.go`, `backend/internal/handler/{feed,handler,feed_refresh_test}.go` | [P2-02a-feed-refresh-timeout-hotfix.md](./P2-02a-feed-refresh-timeout-hotfix.md) |
+| `P2-02b` | L2 原生多厂商 Decisions API 适配器（Gemini/OpenAI/TypeSafe/Cloudflare Clef）与轻量 AI 设置面板 | Phase 2 (v0.2 / DEC-008) | 待认领（通道 A/B：ZCode / Codex / Trae / Antigravity；`P2-02a` 已完成，可随时开工） | `TODO` | `backend/internal/ai/**`, `backend/internal/pkg/httpc/**`, `backend/internal/model/model.go`, `backend/internal/store/migrations/008_ai_settings.sql`, `backend/internal/store/ai_settings*.go`, `backend/internal/pull/{puller,puller_test}.go`, `backend/internal/handler/{handler,ai_settings*}.go`, `backend/cmd/fusion/main.go`, `frontend/src/components/settings/**`, `frontend/src/lib/api/{types,index}.ts`, `frontend/src/lib/i18n/messages/**`, `deploy/{docker-compose.yml,.env.example}` | [P2-02b-decision-apis-and-ai-settings.md](./P2-02b-decision-apis-and-ai-settings.md) |
 
 ---
 

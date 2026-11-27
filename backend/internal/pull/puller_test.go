@@ -376,3 +376,157 @@ func TestRSSBudgetCountsOnlyNewItems(t *testing.T) {
 		t.Fatal("evaluation error altered fetch status")
 	}
 }
+
+func TestRefreshFeedDecouplesFetchTimeoutFromTriage(t *testing.T) {
+	st, err := store.New(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatalf("create store: %v", err)
+	}
+	defer st.Close()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/rss+xml")
+		_, _ = fmt.Fprint(w, `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0"><channel><title>Fast RSS</title><link>https://example.com</link>
+<item><guid>g1</guid><title>Item 1</title><link>https://example.com/1</link><description>body 1</description></item>
+<item><guid>g2</guid><title>Item 2</title><link>https://example.com/2</link><description>body 2</description></item>
+</channel></rss>`)
+	}))
+	defer server.Close()
+
+	feed, err := st.CreateFeed(1, "Fast RSS", server.URL, "", "")
+	if err != nil {
+		t.Fatalf("create feed: %v", err)
+	}
+	enabled := true
+	if err := st.UpdateFeed(feed.ID, store.UpdateFeedParams{AIEnabled: &enabled}); err != nil {
+		t.Fatalf("enable ai: %v", err)
+	}
+
+	p := New(st, &config.Config{
+		PullInterval:      1800,
+		PullTimeout:       5,
+		PullConcurrency:   1,
+		PullMaxBackoff:    604800,
+		AllowPrivateFeeds: true,
+	})
+	p.timeout = 50 * time.Millisecond
+
+	var evaluated atomic.Int32
+	p.SetEvaluator(rssEvalFunc(func(ctx context.Context, in triage.Input) (triage.Result, error) {
+		if err := ctx.Err(); err != nil {
+			return triage.Result{}, err
+		}
+		if deadline, ok := ctx.Deadline(); !ok || time.Until(deadline) < time.Second {
+			t.Errorf("evaluator received unexpected short deadline: ok=%v remaining=%v", ok, time.Until(deadline))
+		}
+		select {
+		case <-time.After(75 * time.Millisecond):
+		case <-ctx.Done():
+			return triage.Result{}, ctx.Err()
+		}
+		evaluated.Add(1)
+		score := 85
+		return triage.Result{Domain: "ai", Priority: "high", TriageStatus: "kept", AIScore: &score}, nil
+	}))
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if err := p.RefreshFeed(ctx, feed.ID); err != nil {
+		t.Fatalf("refresh feed: %v", err)
+	}
+
+	if got := evaluated.Load(); got != 2 {
+		t.Fatalf("evaluated = %d, want 2", got)
+	}
+
+	saved, err := st.ListItems(store.ListItemsParams{FeedID: &feed.ID})
+	if err != nil {
+		t.Fatalf("list items: %v", err)
+	}
+	if len(saved) != 2 {
+		t.Fatalf("saved items = %d, want 2", len(saved))
+	}
+	for _, item := range saved {
+		if item.TriageStatus != "kept" || item.AIScore == nil || *item.AIScore != 85 {
+			t.Fatalf("item %s triage = (%q, %v), want (kept, 85)", item.GUID, item.TriageStatus, item.AIScore)
+		}
+	}
+
+	updated, err := st.GetFeed(feed.ID)
+	if err != nil {
+		t.Fatalf("get feed: %v", err)
+	}
+	if updated.FetchState.LastSuccessAt == 0 || updated.FetchState.ConsecutiveFailures != 0 {
+		t.Fatalf("unexpected fetch state: %+v", updated.FetchState)
+	}
+}
+
+func TestRefreshFeedFetchTimeoutStillCancelsSlowHTTP(t *testing.T) {
+	st, err := store.New(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatalf("create store: %v", err)
+	}
+	defer st.Close()
+
+	unblock := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case <-r.Context().Done():
+		case <-unblock:
+		case <-time.After(2 * time.Second):
+		}
+	}))
+	defer func() {
+		close(unblock)
+		server.Close()
+	}()
+
+	feed, err := st.CreateFeed(1, "Slow RSS", server.URL, "", "")
+	if err != nil {
+		t.Fatalf("create feed: %v", err)
+	}
+	enabled := true
+	if err := st.UpdateFeed(feed.ID, store.UpdateFeedParams{AIEnabled: &enabled}); err != nil {
+		t.Fatalf("enable ai: %v", err)
+	}
+
+	p := New(st, &config.Config{
+		PullInterval:      1800,
+		PullTimeout:       5,
+		PullConcurrency:   1,
+		PullMaxBackoff:    604800,
+		AllowPrivateFeeds: true,
+	})
+	p.timeout = 50 * time.Millisecond
+
+	var evalCalls atomic.Int32
+	p.SetEvaluator(rssEvalFunc(func(ctx context.Context, in triage.Input) (triage.Result, error) {
+		evalCalls.Add(1)
+		return triage.Result{Domain: "other", Priority: "normal", TriageStatus: "kept"}, nil
+	}))
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	start := time.Now()
+	if err := p.RefreshFeed(ctx, feed.ID); err != nil {
+		t.Fatalf("refresh feed: %v", err)
+	}
+	if elapsed := time.Since(start); elapsed >= time.Second {
+		t.Fatalf("slow fetch took %v, expected prompt timeout near 50ms", elapsed)
+	}
+
+	if got := evalCalls.Load(); got != 0 {
+		t.Fatalf("evaluator called %d times on failed fetch, want 0", got)
+	}
+
+	updated, err := st.GetFeed(feed.ID)
+	if err != nil {
+		t.Fatalf("get feed: %v", err)
+	}
+	if updated.FetchState.ConsecutiveFailures != 1 || updated.FetchState.LastSuccessAt != 0 || updated.FetchState.LastError == "" {
+		t.Fatalf("expected recorded fetch timeout failure, got %+v", updated.FetchState)
+	}
+}
