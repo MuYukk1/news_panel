@@ -73,7 +73,7 @@
   - 多源探测与 OPML 导入升级为多选批量导入（支持直接粘贴 GitHub `.opml` 链接）。
 - **`P2-02`（三级 AI 分拣管线底座 — ✅ `DONE`）**：L1 程序规则拦截 → L2 云端轻量 Decision 门控（可插拔 HTTP Adapter，支持显式关闭/自动跳过）→ L3 主模型评分/摘要/复核，打通 RSS `ai_enabled` 闭环与 `/api/v1/ai/stats`。
 - **`P2-02a`（单源刷新 30s 超时热修 — ✅ `DONE`）**：解耦 RSS HTTP 抓取超时（`PullTimeout` 30s）与 AI 分拣超时（单源后台刷新放宽至 15 分钟并增加同源并发刷新去重守卫），解决 L3 CLI 冷却期下手动/首次刷新被 30s 截断标为 `failed` 的线上缺陷。
-- **`P2-02b`（L2 原生多厂商 Decisions API 适配器与轻量 AI 设置面板 — 📋 `TODO`，落实 `DEC-008`）**：
+- **`P2-02b`（L2 原生多厂商 Decisions API 适配器与轻量 AI 设置面板 — ✅ `DONE`，落实 `DEC-008`）**：
   - 基于纯 Go 标准库双 Dialect 统一适配 `gemini_decision`（`gemini-decision-1`）、`openai_decision`（`gpt-6-luna`）、`typesafe`（`jev-latest`）、`cloudflare_clef`（`@cf/cloudflare/clef-flash`，支持 Cloudflare Account ID），兼容既有 `openai` / `http_json` / `off`；
   - 新增 `ai_settings` 单行表与独立 `/api/v1/ai/settings`（写密钥不回传明文、脱敏展示、SSRF 与防重定向保护）及 `POST /api/v1/ai/settings/test` 一键连通性测试；
   - `Evaluator` / `Puller` 零重启热更新（`atomic.Pointer` / `atomic.Int64`），并在 `SettingsDialog` 新增轻量「AI 分拣」Tab（不触碰插件市场 UI 等 Non-Goals）。

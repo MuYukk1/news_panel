@@ -4,7 +4,7 @@
 - **Task ID**：`P2-02b`
 - **Phase / Milestone**：`Phase 2 (v0.2 / 落实 DEC-008)`
 - **前置门禁（Gate Dependency）**：`Gate 1（2026-11-20）与 DEC-008（2026-11-27）已批准 + P2-02、P2-02a 均已 DONE`
-- **当前状态（Status）**：`IN_REVIEW`
+- **当前状态（Status）**：`DONE`（2026-11-28 LEAD 独立复验通过并合入 `main`）
 - **调度通道与目标执行端（Channel / Runner）**：`通道 A / 通道 B 均可（ZCode / Codex / Trae / Antigravity；Go 后端 + SQLite 迁移 + React 19 设置 Tab 全栈切片）`
 - **工作区 / 分支策略（Worktree / Branch）**：**严禁直接在 `main` 提交代码**。须从包含 `P2-02a` 的最新 `main` 切出独立分支或 worktree：
   - `git checkout -b feat/p2-02b-decision-apis-and-ai-settings`（或 `git worktree add ../news_panel-p2-02b -b feat/p2-02b-decision-apis-and-ai-settings`）

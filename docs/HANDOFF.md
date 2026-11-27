@@ -7,8 +7,8 @@
 ## 1. 当前项目快照
 
 - **当前所处阶段**：**Phase 2（v0.2 体验收口、三级处理管线与个性化闭环 —— Gate 1 已于 2026-11-20 正式批准，`DEC-008` 已于 2026-11-27 正式批准）**
-- **代码仓库现状**：Phase 1（`P1-01`–`P1-04`）及 Phase 2 的 **`P2-01`**、**`P2-02`**（三级递进 AI 管线 + 可选/可关闭 L2 云端门控 + RSS `ai_enabled` 单源闭环 + `/api/v1/ai/stats`）、**`P2-02a`**（单源刷新 30s 超时热修与同源刷新去重）均已 `DONE`（回滚锚点 `baseline-pre-p2-02` / `0db31f3`）。
-- **协同与派发策略**：`DEC-008` 与 `P2-02a` 均已完成，当前已正式开放 **`P2-02b`**（L2 原生多厂商 Decisions API 适配器 + 轻量 AI 设置面板，`TODO` 待认领），随后按序推进 **`P2-03`**（用户优先级反馈与有界个性化档案闭环）；**`P2-04`**（Telegram 外置插件）文件边界完全独立，待 `DEC-009` 拍板后可并行派发。
+- **代码仓库现状**：Phase 1（`P1-01`–`P1-04`）及 Phase 2 的 **`P2-01`**、**`P2-02`**（三级递进 AI 管线 + 可选/可关闭 L2 云端门控 + RSS `ai_enabled` 单源闭环 + `/api/v1/ai/stats`）、**`P2-02a`**（单源刷新 30s 超时热修与同源刷新去重）、**`P2-02b`**（四大原生 L2 Decisions APIs + `ai_settings` 持久化 + 零重启热更新 + 轻量前端「AI 分拣」设置 Tab）均已 `DONE` 并合入 `main`（回滚锚点 `baseline-pre-p2-02` / `0db31f3`）。
+- **协同与派发策略**：`DEC-008`、`P2-02a` 与 `P2-02b` 均已闭环合入，下一步按序拆出并派发 **`P2-03`**（用户优先级反馈与有界个性化档案闭环）；**`P2-04`**（Telegram 外置插件）文件边界完全独立，待 `DEC-009` 拍板后可并行派发。
 
 ---
 
@@ -55,7 +55,7 @@
 - [x] 完成 [tasks/P2-02-three-stage-ai-pipeline.md](../tasks/P2-02-three-stage-ai-pipeline.md)（`DONE`，2026-11-27 LEAD 复验合入 `main`）
 - [x] **DEC-008（2026-11-27 批准）**：锁定 L2 原生决策模型 Tier-1 预设（`gemini_decision`、`openai_decision`、`typesafe`、`cloudflare_clef` + 兼容 `openai`/`http_json`/`off`）、轻量 AI 设置面板与 SQLite `0600` 密钥存储/SSRF 安全策略，以及 `P2-02a → P2-02b → P2-03` 排期
 - [x] 完成 [tasks/P2-02a-feed-refresh-timeout-hotfix.md](../tasks/P2-02a-feed-refresh-timeout-hotfix.md)（`DONE`，2026-11-27 独立复验通过：解耦单源 RSS 抓取与 AI 分拣超时 + 同源刷新去重）
-- [ ] 完成 [tasks/P2-02b-decision-apis-and-ai-settings.md](../tasks/P2-02b-decision-apis-and-ai-settings.md)（`TODO`：L2 多厂商 Decisions API 适配器 + 轻量 AI 设置面板与热更新，已解锁可立即认领）
+- [x] 完成 [tasks/P2-02b-decision-apis-and-ai-settings.md](../tasks/P2-02b-decision-apis-and-ai-settings.md)（`DONE`，2026-11-28 LEAD 独立复验通过并合入 `main`：四大原生 L2 Decisions APIs + 轻量 AI 设置面板与热更新）
 - [ ] 拆解并完成 `P2-03`（用户优先级反馈 + 空闲定时归纳有界个性化档案闭环）
 - [ ] 拍板 `DEC-009` 后拆解并完成 `P2-04`（外置 Telegram 信源插件，兼容公开频道与个人号私有群，可与 `P2-02b`/`P2-03` 并行）
 - [ ] 用户验收 Phase 2 整体效果并拍板 Gate 2（`DEC-010`）
