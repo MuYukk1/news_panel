@@ -44,7 +44,9 @@ func evalWith(cfg Config, p CompletionProvider, logger *slog.Logger) *Evaluator 
 	if logger == nil {
 		logger = discardLogger()
 	}
-	return &Evaluator{cfg: cfg, l1: newL1Rules(cfg), logger: logger, provider: p}
+	e := New(cfg, logger)
+	e.state.Load().provider = p
+	return e
 }
 
 const goodVerdict = `{"domain":"ai","score":80,"tags":["OpenAI"],"summary":"一句话摘要","priority":"normal","keep":true}`
@@ -62,7 +64,7 @@ func TestEvaluatorL1OnlyDegradation(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			e := New(tc.cfg, discardLogger())
-			if e.provider != nil {
+			if e.state.Load().provider != nil {
 				t.Fatalf("expected L1-only (nil provider)")
 			}
 			got, err := e.Evaluate(context.Background(), l1Input("OpenAI 发布新模型值得关注", ""))

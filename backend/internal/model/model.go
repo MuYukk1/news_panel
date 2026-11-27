@@ -110,3 +110,71 @@ type Bookmark struct {
 	Unread    bool  `json:"unread"`
 	CreatedAt int64 `json:"created_at"`
 }
+
+// AISettings contains only explicit database overrides. Nil inherits the startup configuration.
+type AISettings struct {
+	DecisionEnabled        *bool   `json:"decision_enabled,omitempty"`
+	DecisionProvider       *string `json:"decision_provider,omitempty"`
+	DecisionBaseURL        *string `json:"decision_base_url,omitempty"`
+	DecisionAPIKey         *string `json:"decision_api_key,omitempty"`
+	DecisionAccountID      *string `json:"decision_account_id,omitempty"`
+	DecisionAuthHeader     *string `json:"decision_auth_header,omitempty"`
+	DecisionModel          *string `json:"decision_model,omitempty"`
+	DecisionJSONFormat     *bool   `json:"decision_json_format,omitempty"`
+	DecisionTimeoutSeconds *int    `json:"decision_timeout_seconds,omitempty"`
+	DecisionL3Priorities   *string `json:"decision_l3_priorities,omitempty"`
+	DecisionLowAction      *string `json:"decision_low_action,omitempty"`
+	DecisionFallbackMode   *string `json:"decision_fallback_mode,omitempty"`
+	Topics                 *string `json:"topics,omitempty"`
+	RSSMaxItemsPerPull     *int    `json:"rss_max_items_per_pull,omitempty"`
+}
+
+// Apply merges a partial update. An empty key preserves the saved credential.
+func (s AISettings) Apply(p AISettings, clearKey bool) AISettings {
+	if p.DecisionEnabled != nil {
+		s.DecisionEnabled = p.DecisionEnabled
+	}
+	if p.DecisionProvider != nil {
+		s.DecisionProvider = p.DecisionProvider
+	}
+	if p.DecisionBaseURL != nil {
+		s.DecisionBaseURL = p.DecisionBaseURL
+	}
+	if p.DecisionAPIKey != nil && *p.DecisionAPIKey != "" {
+		s.DecisionAPIKey = p.DecisionAPIKey
+	}
+	if p.DecisionAccountID != nil {
+		s.DecisionAccountID = p.DecisionAccountID
+	}
+	if p.DecisionAuthHeader != nil {
+		s.DecisionAuthHeader = p.DecisionAuthHeader
+	}
+	if p.DecisionModel != nil {
+		s.DecisionModel = p.DecisionModel
+	}
+	if p.DecisionJSONFormat != nil {
+		s.DecisionJSONFormat = p.DecisionJSONFormat
+	}
+	if p.DecisionTimeoutSeconds != nil {
+		s.DecisionTimeoutSeconds = p.DecisionTimeoutSeconds
+	}
+	if p.DecisionL3Priorities != nil {
+		s.DecisionL3Priorities = p.DecisionL3Priorities
+	}
+	if p.DecisionLowAction != nil {
+		s.DecisionLowAction = p.DecisionLowAction
+	}
+	if p.DecisionFallbackMode != nil {
+		s.DecisionFallbackMode = p.DecisionFallbackMode
+	}
+	if p.Topics != nil {
+		s.Topics = p.Topics
+	}
+	if p.RSSMaxItemsPerPull != nil {
+		s.RSSMaxItemsPerPull = p.RSSMaxItemsPerPull
+	}
+	if clearKey {
+		s.DecisionAPIKey = nil
+	}
+	return s
+}

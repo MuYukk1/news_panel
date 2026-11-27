@@ -16,7 +16,7 @@ import (
 	"news_panel/internal/triage"
 )
 
-func TestDecisionConfig(t *testing.T) {
+func TestDecisionConfigFromEnv(t *testing.T) {
 	clearAIEnv(t)
 	cfg := func() DecisionConfig { return ConfigFromEnv(discardLogger()).Decision }
 	c := cfg()
@@ -97,7 +97,7 @@ func TestDecisionAdapters(t *testing.T) {
 					var body struct {
 						Model     string
 						State     string
-						Questions map[string]typeSafeQuestion
+						Questions map[string]decisionQuestion
 					}
 					if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 						t.Error(err)
@@ -138,7 +138,7 @@ func TestDecisionAdapters(t *testing.T) {
 				fmt.Fprint(w, `{"decision":{"keep":true,"reason":"`+key+strings.Repeat("密", 80)+`"}}`)
 			}))
 			defer srv.Close()
-			cfg := Config{Topics: "topics", Decision: DecisionConfig{Enabled: true, Provider: tc.provider, BaseURL: srv.URL, APIKey: tc.key, AuthHeader: tc.header, Model: "light", JSONFormat: true, Timeout: time.Second}}
+			cfg := Config{Topics: "topics", Decision: DecisionConfig{AllowPrivateEndpoints: true, Enabled: true, Provider: tc.provider, BaseURL: srv.URL, APIKey: tc.key, AuthHeader: tc.header, Model: "light", JSONFormat: true, Timeout: time.Second}}
 			got, err := newDecisionProvider(cfg).Decide(context.Background(), in, l1)
 			if err != nil || got.Action != "pass" || got.Priority != "normal" || got.Domain != l1.Domain || strings.Contains(got.Reason, key) || (tc.provider != "typesafe" && utf8.RuneCountInString(got.Reason) != 64) || (tc.provider == "typesafe" && !strings.HasPrefix(got.Reason, "jev:pass(0.95)")) {
 				t.Fatalf("bad normalized decision: %+v (%v)", got, err)
@@ -170,7 +170,7 @@ func TestDecisionRejectsOversizeAndErrors(t *testing.T) {
 				if mode == "timeout" {
 					timeout = 20 * time.Millisecond
 				}
-				p := newDecisionProvider(Config{Decision: DecisionConfig{Enabled: true, Provider: provider, BaseURL: srv.URL, APIKey: key, AuthHeader: "Authorization", Timeout: timeout}})
+				p := newDecisionProvider(Config{Decision: DecisionConfig{AllowPrivateEndpoints: true, Enabled: true, Provider: provider, BaseURL: srv.URL, APIKey: key, AuthHeader: "Authorization", Timeout: timeout}})
 				_, err := p.Decide(context.Background(), triage.Input{}, triage.Result{})
 				if err == nil || strings.Contains(err.Error(), key) {
 					t.Fatal("missing error or leaked key")
@@ -200,10 +200,10 @@ func TestDecisionPipeline(t *testing.T) {
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { hits.Add(1); fmt.Fprint(w, tc.body) }))
 			defer srv.Close()
 			cfg := l2Config()
-			cfg.Decision = DecisionConfig{Provider: "http_json", Enabled: tc.name != "disabled", BaseURL: srv.URL, Timeout: time.Second, L3Priorities: []string{"high", "normal", "critical"}, LowAction: tc.low, FallbackMode: tc.mode}
+			cfg.Decision = DecisionConfig{AllowPrivateEndpoints: true, Provider: "http_json", Enabled: tc.name != "disabled", BaseURL: srv.URL, Timeout: time.Second, L3Priorities: []string{"high", "normal", "critical"}, LowAction: tc.low, FallbackMode: tc.mode}
 			e := New(cfg, discardLogger())
 			main := &stubProvider{out: goodVerdict}
-			e.provider = main
+			e.state.Load().provider = main
 			in := l1Input("OpenAI 发布模型", "发布")
 			if tc.name == "noise" {
 				in = l1Input("互粉互关回关必回", "")
@@ -263,7 +263,7 @@ func TestDecisionCancellationAndL1Only(t *testing.T) {
 	defer srv.Close()
 	defer close(done)
 	cfg := l2Config()
-	cfg.Decision = DecisionConfig{Enabled: true, Provider: "http_json", BaseURL: srv.URL, Timeout: time.Second}
+	cfg.Decision = DecisionConfig{AllowPrivateEndpoints: true, Enabled: true, Provider: "http_json", BaseURL: srv.URL, Timeout: time.Second}
 	in := l1Input("OpenAI 发布模型", "发布")
 	for _, mode := range []string{"l1", "disabled", "missing-main-key"} {
 		only := cfg

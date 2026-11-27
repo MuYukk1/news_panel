@@ -3,7 +3,9 @@ package httpc
 import (
 	"context"
 	"net/http"
+	"strings"
 	"testing"
+	"time"
 )
 
 func TestValidateRequestURL(t *testing.T) {
@@ -56,12 +58,10 @@ func TestRedirectValidatorBlocksPrivateTargets(t *testing.T) {
 	})
 }
 
-func TestValidateDialTargetBlocksPrivateHost(t *testing.T) {
-	if err := validateDialTarget(context.Background(), "127.0.0.1:8080", false); err == nil {
-		t.Fatal("expected private dial target to be blocked")
-	}
-
-	if err := validateDialTarget(context.Background(), "127.0.0.1:8080", true); err != nil {
-		t.Fatalf("expected private dial target when allowPrivate=true, got %v", err)
+func TestDecisionDialBlocksPrivateHost(t *testing.T) {
+	client := NewNoRedirectClient(time.Second, false)
+	dial := client.Transport.(*http.Transport).DialContext
+	if _, err := dial(context.Background(), "tcp", "127.0.0.1:8080"); err == nil || !strings.Contains(err.Error(), "private host") {
+		t.Fatal("expected private dial target to be rejected before connecting")
 	}
 }

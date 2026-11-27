@@ -1,7 +1,8 @@
+import { AISettingsTab } from "./ai-settings-tab";
 import { useCallback, useState } from "react";
 import { useTheme } from "next-themes";
 import { toast } from "sonner";
-import { Download, Info, Keyboard, Settings as SettingsIcon } from "lucide-react";
+import { Download, Info, SlidersHorizontal, Keyboard, Settings as SettingsIcon } from "lucide-react";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
@@ -34,7 +35,8 @@ function GithubIcon({ className }: { className?: string }) {
   );
 }
 
-type SettingsTab = "general" | "about";
+
+type SettingsTab = "general" | "about" | "ai";
 
 // Module scope so the counters survive unmounting a tab or the dialog
 // itself: a late-failing save from an old mount must not revert a newer
@@ -425,6 +427,7 @@ export function SettingsDialog() {
   const tabTitles: Record<SettingsTab, string> = {
     general: t("settings.tab.general"),
     about: t("settings.tab.about"),
+    ai: t("settings.ai.title"),
   };
 
   return (
@@ -448,6 +451,12 @@ export function SettingsDialog() {
               active={activeTab === "about"}
               onClick={() => setActiveTab("about")}
             />
+            <NavItem
+              icon={<SlidersHorizontal className="h-4 w-4" />}
+              label={tabTitles.ai}
+              active={activeTab === "ai"}
+              onClick={() => setActiveTab("ai")}
+            />
           </nav>
         </div>
 
@@ -460,6 +469,7 @@ export function SettingsDialog() {
           <div className="flex-1 overflow-y-auto">
             {activeTab === "general" && <GeneralContent />}
             {activeTab === "about" && <AboutContent />}
+            {activeTab === "ai" && <AISettingsTab />}
           </div>
         </div>
       </DialogContent>

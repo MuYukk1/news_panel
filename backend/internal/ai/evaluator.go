@@ -7,6 +7,8 @@ import (
 	"log/slog"
 	"slices"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"news_panel/internal/triage"
@@ -14,8 +16,15 @@ import (
 
 // Evaluator and its providers are shared by RSS and plugin ingest.
 type Evaluator struct {
-	decision DecisionProvider
+	state    atomic.Pointer[evalSnapshot]
+	reloadMu sync.Mutex
+	env      Config
 	counters pipelineCounters
+}
+
+type evalSnapshot struct {
+	decision DecisionProvider
+	counters *pipelineCounters
 	cfg      Config
 	provider CompletionProvider // nil => L1-only
 	l1       *l1Rules
@@ -31,7 +40,8 @@ func New(cfg Config, logger *slog.Logger) *Evaluator {
 	if logger == nil {
 		logger = slog.Default()
 	}
-	e := &Evaluator{cfg: cfg, l1: newL1Rules(cfg), logger: logger}
+	owner := &Evaluator{env: cfg}
+	e := &evalSnapshot{cfg: cfg, l1: newL1Rules(cfg), logger: logger, counters: &owner.counters}
 	switch {
 	case !cfg.Enabled:
 		logger.Info("ai pipeline disabled; running L1-only")
@@ -60,7 +70,29 @@ func New(cfg Config, logger *slog.Logger) *Evaluator {
 			logger.Info("ai L2 decision gate enabled", "provider", e.decision.Name())
 		}
 	}
-	return e
+	owner.state.Store(e)
+	return owner
+}
+
+func (e *Evaluator) EnvConfig() Config {
+	cfg := e.env
+	cfg.Decision.L3Priorities = slices.Clone(cfg.Decision.L3Priorities)
+	cfg.L1BlockKeywords = slices.Clone(cfg.L1BlockKeywords)
+	cfg.L1AllowKeywords = slices.Clone(cfg.L1AllowKeywords)
+	cfg.CLIArgs = slices.Clone(cfg.CLIArgs)
+	return cfg
+}
+
+func (e *Evaluator) Reload(cfg Config) {
+	e.reloadMu.Lock()
+	defer e.reloadMu.Unlock()
+	next := *e.state.Load()
+	next.cfg = cfg
+	next.l1 = newL1Rules(cfg)
+	if next.provider != nil {
+		next.decision = newDecisionProvider(cfg)
+	}
+	e.state.Store(&next)
 }
 
 func NewEvaluatorFromEnv(logger *slog.Logger) *Evaluator {
@@ -71,6 +103,10 @@ func NewEvaluatorFromEnv(logger *slog.Logger) *Evaluator {
 func NewFromEnv() *Evaluator { return NewEvaluatorFromEnv(slog.Default()) }
 
 func (e *Evaluator) Evaluate(ctx context.Context, in triage.Input) (triage.Result, error) {
+	return e.state.Load().evaluate(ctx, in)
+}
+
+func (e *evalSnapshot) evaluate(ctx context.Context, in triage.Input) (triage.Result, error) {
 	if err := ctx.Err(); err != nil {
 		return triage.Result{}, err
 	}
@@ -129,7 +165,7 @@ func gateResult(l1 triage.Result, hint DecisionOutcome, status, tag string) tria
 	return l1
 }
 
-func (e *Evaluator) score(ctx context.Context, in triage.Input, l1 triage.Result, hint *DecisionOutcome) (triage.Result, error) {
+func (e *evalSnapshot) score(ctx context.Context, in triage.Input, l1 triage.Result, hint *DecisionOutcome) (triage.Result, error) {
 	system, user := e.l3Prompts(in, l1, hint)
 	e.counters.l3Called.Add(1)
 	completion, err := e.provider.Complete(ctx, system, user)
@@ -155,7 +191,7 @@ func (e *Evaluator) score(ctx context.Context, in triage.Input, l1 triage.Result
 // fallback applies AI_FALLBACK_MODE after an L3 failure. keep_l1 preserves the
 // L1 verdict (important information is never lost) with an l2-fallback tag;
 // fail returns a redacted error so the handler stores triage_status=failed.
-func (e *Evaluator) fallback(l1 triage.Result, cause error) (triage.Result, error) {
+func (e *evalSnapshot) fallback(l1 triage.Result, cause error) (triage.Result, error) {
 	safe := e.safeError(fmt.Sprintf("%s provider: %v", e.provider.Name(), cause))
 	if e.cfg.FallbackMode == "fail" {
 		return triage.Result{}, errors.New(safe)
@@ -166,13 +202,13 @@ func (e *Evaluator) fallback(l1 triage.Result, cause error) (triage.Result, erro
 	return l1, nil
 }
 
-func (e *Evaluator) safeError(s string) string {
+func (e *evalSnapshot) safeError(s string) string {
 	return redactCredential(redact(s, e.cfg.APIKey), e.cfg.Decision.APIKey)
 }
 
 const promptContentLimit = 2000
 
-func (e *Evaluator) l3Prompts(in triage.Input, l1 triage.Result, hint *DecisionOutcome) (string, string) {
+func (e *evalSnapshot) l3Prompts(in triage.Input, l1 triage.Result, hint *DecisionOutcome) (string, string) {
 	system := fmt.Sprintf(`你是 news_panel 个人情报面板的信息分拣器。用户关注三大核心情报域：
 - investing：投资/股票突发新闻、财报、宏观催化剂（美联储、CPI、关税、并购等）
 - ai：AI 官方动态、前沿模型发布、内测/灰度泄露、重要开源与算力进展

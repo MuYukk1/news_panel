@@ -264,3 +264,67 @@ export interface OIDCStatusResponse {
 export interface OIDCLoginResponse {
   auth_url: string;
 }
+
+export interface AITriageConfig {
+  decision_enabled: boolean;
+  decision_provider: string;
+  decision_base_url: string;
+  decision_account_id: string;
+  decision_auth_header: string;
+  decision_model: string;
+  decision_json_format: boolean;
+  decision_timeout_seconds: number;
+  decision_l3_priorities: string;
+  decision_low_action: string;
+  decision_fallback_mode: string;
+  topics: string;
+  rss_max_items_per_pull: number;
+}
+
+export interface DecisionPreset {
+  id: string;
+  label: string;
+  default_base_url: string;
+  default_model: string;
+  requires_api_key: boolean;
+  requires_account_id: boolean;
+  auth_header_hint: string;
+}
+
+export interface AITriageSettings {
+  decision_requested: boolean;
+  effective: AITriageConfig;
+  sources: Record<string, "db" | "env" | "default" | "none">;
+  overrides: Record<string, boolean>;
+  decision_api_key_configured: boolean;
+  decision_api_key_source: "db" | "env" | "none";
+  decision_api_key_masked: string;
+  l3_enabled: boolean;
+  l3_provider: string;
+  l3_model: string;
+  presets: DecisionPreset[];
+}
+
+export type AISettingsPatch = Partial<AITriageConfig> & {
+  decision_api_key?: string;
+  clear_decision_api_key?: boolean;
+  reset_to_env?: boolean;
+};
+
+export interface AITriageStats {
+  l2_enabled: boolean;
+  l2_provider: string;
+  l1_filtered: number;
+  l2_filtered: number;
+  l2_bypassed_l3: number;
+  l3_called: number;
+}
+
+export interface DecisionTestResult {
+  ok: boolean;
+  provider: string;
+  model: string;
+  latency_ms: number;
+  outcome: { action: string; priority: string; domain: string; reason: string };
+  error: string;
+}

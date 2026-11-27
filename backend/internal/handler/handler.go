@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"news_panel/internal/auth"
@@ -33,6 +34,8 @@ type Handler struct {
 	limiter   *loginLimiter
 	lastSweep int64
 
+	aiSettingsMu        sync.Mutex
+	lastDecisionTest    time.Time
 	refreshAllMu        sync.Mutex
 	refreshAllRunning   bool
 	feedRefreshMu       sync.Mutex
@@ -157,6 +160,10 @@ func (h *Handler) SetupRouter() *gin.Engine {
 			auth.GET("/v1/items", h.listItems)
 			auth.GET("/v1/items/:id", h.getItem)
 			auth.GET("/v1/ai/stats", h.aiStats)
+			aiSettings := auth.Group("/v1/ai/settings", h.requireAIReader)
+			aiSettings.GET("", h.getAISettings)
+			aiSettings.PATCH("", h.patchAISettings)
+			aiSettings.POST("/test", h.testAISettings)
 			auth.GET("/v1/plugins/heartbeats", h.listHeartbeats)
 			auth.PATCH("/v1/plugins/:source_id", h.updatePlugin)
 			auth.GET("/items/:id", h.getItem)

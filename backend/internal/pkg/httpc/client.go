@@ -39,10 +39,25 @@ func NewClient(timeout time.Duration, proxyURL string, allowPrivate bool) (*http
 	}
 	dialer := &net.Dialer{Timeout: 10 * time.Second, KeepAlive: 30 * time.Second}
 	transport.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
-		if err := validateDialTarget(ctx, addr, allowPrivate); err != nil {
+		if allowPrivate {
+			return dialer.DialContext(ctx, network, addr)
+		}
+		host, port, err := net.SplitHostPort(addr)
+		if err != nil {
 			return nil, err
 		}
-		return dialer.DialContext(ctx, network, addr)
+		addresses, err := publicAddresses(ctx, host)
+		if err != nil {
+			return nil, err
+		}
+		for _, ip := range addresses {
+			conn, dialErr := dialer.DialContext(ctx, network, net.JoinHostPort(ip.IP.String(), port))
+			if dialErr == nil {
+				return conn, nil
+			}
+			err = dialErr
+		}
+		return nil, err
 	}
 
 	if proxyURL != "" {
@@ -81,20 +96,13 @@ func redirectValidator(allowPrivate bool) func(req *http.Request, via []*http.Re
 	}
 }
 
-func validateDialTarget(ctx context.Context, addr string, allowPrivate bool) error {
-	if allowPrivate {
-		return nil
-	}
-
-	host := addr
-	if parsedHost, _, err := net.SplitHostPort(addr); err == nil {
-		host = parsedHost
-	}
-
-	return validatePublicHost(ctx, host)
-}
-
 // SetDefaultHeaders adds default headers required for feed fetching.
 func SetDefaultHeaders(req *http.Request) {
 	req.Header.Set("User-Agent", "fusion/1.0")
+}
+
+// NewNoRedirectClient shares the validated transport without forwarding credentials on redirects.
+func NewNoRedirectClient(timeout time.Duration, allowPrivate bool) *http.Client {
+	base, _ := NewClient(timeout, "", allowPrivate)
+	return &http.Client{Timeout: timeout, Transport: base.Transport, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 }
