@@ -1,6 +1,6 @@
 import { api } from "./client";
 import type {
-  APIResponse,
+  APIResponse, AISettingsPatch, AITriageSettings, AITriageStats, DecisionTestResult,
   ListResponse,
   PaginatedListResponse,
   LoginRequest,
@@ -141,6 +141,13 @@ export const bookmarkAPI = {
 };
 
 // Settings APIs
+export const aiSettingsAPI = {
+  get: () => api.get<APIResponse<AITriageSettings>>("/v1/ai/settings"),
+  update: (patch: AISettingsPatch) => api.patch<APIResponse<AITriageSettings>>("/v1/ai/settings", patch),
+  test: (patch: AISettingsPatch) => api.post<APIResponse<DecisionTestResult>>("/v1/ai/settings/test", patch),
+  stats: () => api.get<APIResponse<AITriageStats>>("/v1/ai/stats"),
+};
+
 export const settingsAPI = {
   get: () => api.get<APIResponse<Settings>>("/settings"),
 

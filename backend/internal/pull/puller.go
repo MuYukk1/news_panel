@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"golang.org/x/sync/semaphore"
@@ -21,7 +22,7 @@ import (
 
 type Puller struct {
 	evaluator   triage.TriageEvaluator
-	rssLimit    int
+	rssLimit    atomic.Int64
 	store       *store.Store
 	config      *config.Config
 	logger      *slog.Logger
@@ -32,9 +33,8 @@ type Puller struct {
 }
 
 func New(st *store.Store, cfg *config.Config) *Puller {
-	return &Puller{
+	p := &Puller{
 		store:       st,
-		rssLimit:    ai.RSSMaxItemsPerPull(),
 		config:      cfg,
 		logger:      slog.Default(),
 		interval:    time.Duration(cfg.PullInterval) * time.Second,
@@ -42,7 +42,12 @@ func New(st *store.Store, cfg *config.Config) *Puller {
 		maxBackoff:  time.Duration(cfg.PullMaxBackoff) * time.Second,
 		concurrency: semaphore.NewWeighted(int64(cfg.PullConcurrency)),
 	}
+	p.SetRSSLimit(ai.RSSMaxItemsPerPull())
+	return p
 }
+
+func (p *Puller) SetRSSLimit(n int) { p.rssLimit.Store(int64(n)) }
+func (p *Puller) RSSLimit() int     { return int(p.rssLimit.Load()) }
 
 // SetEvaluator installs the shared pipeline before starting the puller.
 func (p *Puller) SetEvaluator(eval triage.TriageEvaluator) { p.evaluator = eval }
@@ -248,7 +253,7 @@ func (p *Puller) saveItems(ctx context.Context, feed *model.Feed, inputs []store
 		return p.store.BatchCreateItemsIgnore(feed.ID, inputs)
 	}
 	sort.SliceStable(inputs, func(i, j int) bool { return inputs[i].PubDate > inputs[j].PubDate })
-	count, pending, err := p.store.BatchCreateItemsWithTriageLimit(feed.ID, inputs, p.rssLimit)
+	count, pending, err := p.store.BatchCreateItemsWithTriageLimit(feed.ID, inputs, p.RSSLimit())
 	if err != nil {
 		return 0, err
 	}

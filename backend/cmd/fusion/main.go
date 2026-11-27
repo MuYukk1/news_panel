@@ -44,6 +44,16 @@ func run() error {
 
 	puller := pull.New(st, cfg)
 	eval := ai.NewFromEnv()
+	if err := st.SecureAIFiles(); err != nil {
+		return err
+	}
+	settings, err := st.GetAISettings()
+	if err != nil {
+		return err
+	}
+	effective := eval.EnvConfig().Merged(settings)
+	eval.Reload(effective)
+	puller.SetRSSLimit(effective.RSSLimit)
 	puller.SetEvaluator(eval)
 	h, err := handler.New(st, cfg, puller, eval)
 	if err != nil {

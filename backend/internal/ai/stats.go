@@ -32,7 +32,8 @@ type pipelineCounters struct {
 	l3Fallback   atomic.Int64
 }
 
-func (e *Evaluator) Stats() PipelineStats {
+func (owner *Evaluator) Stats() PipelineStats {
+	e := owner.state.Load()
 	s := PipelineStats{
 		Enabled: e.provider != nil, L2Enabled: e.decision != nil,
 		L1Filtered:   e.counters.l1Filtered.Load(),

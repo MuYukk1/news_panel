@@ -13,11 +13,13 @@ RSS 单源开启 `ai_enabled` 后，按发布时间从新到旧评估本轮新�
 | 变量 | 默认值 | 说明 |
 | --- | --- | --- |
 | `AI_DECISION_ENABLED` | 空 | 留空自动探测，false 强制关闭 |
-| `AI_DECISION_PROVIDER` | `openai` | `openai`、`typesafe`（TypeSafe AI Jev System One）、`http_json`、`off`（或 `none`） |
-| `AI_DECISION_BASE_URL` | 空 | `openai` 缺省 `https://api.openai.com/v1`，`typesafe` 缺省 `https://api.typesafe.ai/v1/systemone`，`http_json` 填完整 POST 地址 |
-| `AI_DECISION_API_KEY` | 空 | 独立门控密钥，`openai`/`typesafe` 必填，`http_json` 可选 |
-| `AI_DECISION_AUTH_HEADER` | `Authorization` | http_json 鉴权头名。Authorization 自动为裸密钥添加 Bearer 前缀，自定义头原样发送 |
-| `AI_DECISION_MODEL` | `gpt-4o-mini` / `jev-latest` | L2 请求中的 model（`typesafe` 缺省 `jev-latest`） |
+| `AI_DECISION_PROVIDER` | `openai` | 原生预设见下表，兼容 `openai`、`http_json`、`off`（别名 `none`） |
+| `AI_DECISION_BASE_URL` | 随预设 | 自定义端点；`http_json` 需要完整的 POST URL |
+| `AI_DECISION_API_KEY` | 空 | 独立 L2 密钥，四个原生预设与 `openai` 必填，`http_json` 可选 |
+| `AI_DECISION_AUTH_HEADER` | `Authorization` | 自定义 JSON 请求的鉴权头；Authorization 为裸密钥补充 Bearer 前缀 |
+| `AI_DECISION_MODEL` | 随预设 | 替换预设模型或 Cloudflare 模型路径 |
+| `AI_DECISION_ACCOUNT_ID` | 空 | Cloudflare 账户 ID，使用完整 run URL 时可留空 |
+| `AI_ALLOW_PRIVATE_ENDPOINTS` | `false` | 仅由部署环境控制；使用自托管内网 L2 端点时须显式启用 |
 | `AI_DECISION_JSON_FORMAT` | `false` | 在 L2 OpenAI-compatible 请求中指定 json_object |
 | `AI_DECISION_TIMEOUT_SECONDS` | `6` | L2 单次 HTTP 调用超时秒数 |
 | `AI_DECISION_L3_PRIORITIES` | `critical,high,normal` | 放行后进入 L3 的优先级 |
@@ -28,6 +30,23 @@ RSS 单源开启 `ai_enabled` 后，按发布时间从新到旧评估本轮新�
 `openai` 使用与主模型相同的路径拼接规则。门控提示词要求单个 JSON 对象，包括 `action`、`priority`、`domain` 和可选简短原因 `reason`。
 
 `http_json` 向配置地址 POST JSON，携带 `model`、`topics`、`source_type`、`source_id`、`author`、`title`、`content`（最多 2000 个字符）、`url`、`published_at`（UTC RFC3339）、`l1_domain` 和 `l1_priority`。支持顶层或 `data`、`decision`、`result` 包装的响应，例如 `{"decision":{"keep":true,"priority":"high","domain":"ai"}}`。缺少领域时沿用 L1，缺少优先级时放行取 normal、拦截取 low。无有效裁定、超时和响应超过 1 MiB 会触发门控失败策略。
+
+### 原生决策预设
+
+每次请求包含 `action`、`priority` 和 `domain` 三个选择题，关注主题来自当前配置。
+
+| 预设 | 默认模型 | 请求与响应 |
+| --- | --- | --- |
+| `gemini_decision` | `gemini-decision-1` | `input` + 问题映射；通过 `x-goog-api-key` 请求头鉴权 |
+| `openai_decision` | `gpt-6-luna` | `input` + `questions[]`；按 `answers[].name` 对应问题 |
+| `typesafe` | `jev-latest` | `state` + 问题映射；自动补全 `/v1/systemone` |
+| `cloudflare_clef` | `@cf/cloudflare/clef-flash` | `state` + 问题映射；从 `result.answers` 或顶层 `answers` 读取裁定 |
+
+### 在面板中配置
+
+读者登录后，打开「设置 → AI 分拣」即可试运行当前草稿。测试发送一条合成新闻，显示耗时与裁定，同一进程两次测试至少间隔两秒。保存后，新的分拣请求使用新配置，进行中的请求继续使用原快照。累计统计与 L3 CLI 的冷却时间持续有效。
+
+单字段优先级为 SQLite 覆盖、启动环境变量、预设默认值。密钥输入留空会保留旧值；勾选清除并保存后继承环境密钥。恢复默认会清除整行覆盖。数据库与 WAL 文件权限设为 `0600`，密钥以明文存于该受限数据库中。读者接口仅显示密钥来源和掩码。自定义端点在保存、测试和拨号时接受公网校验，L2 客户端拒绝重定向。更换到自定义服务地址时，如来源不同，需为新端点输入密钥。
 
 ## 运行统计
 

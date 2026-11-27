@@ -4,7 +4,7 @@
 - **Task ID**：`P2-02b`
 - **Phase / Milestone**：`Phase 2 (v0.2 / 落实 DEC-008)`
 - **前置门禁（Gate Dependency）**：`Gate 1（2026-11-20）与 DEC-008（2026-11-27）已批准 + P2-02、P2-02a 均已 DONE`
-- **当前状态（Status）**：`TODO`
+- **当前状态（Status）**：`IN_REVIEW`
 - **调度通道与目标执行端（Channel / Runner）**：`通道 A / 通道 B 均可（ZCode / Codex / Trae / Antigravity；Go 后端 + SQLite 迁移 + React 19 设置 Tab 全栈切片）`
 - **工作区 / 分支策略（Worktree / Branch）**：**严禁直接在 `main` 提交代码**。须从包含 `P2-02a` 的最新 `main` 切出独立分支或 worktree：
   - `git checkout -b feat/p2-02b-decision-apis-and-ai-settings`（或 `git worktree add ../news_panel-p2-02b -b feat/p2-02b-decision-apis-and-ai-settings`）
@@ -301,12 +301,60 @@ git diff --check
 
 ---
 
-## Handoff Report（交付回执 —— 结束前必填）
-- **提交状态**：`TODO`
-- **执行端 / 通道**：`<待认领>`
-- **实际改动文件清单**：
-  - `<待回填>`
-- **实测验证命令与观察结果**（仅填写最终修改后亲自跑过并观察到的真实结果）：
-  - `<待回填>`
-- **边界变更申请 / 遗留风险 / 下一步建议**：
-  - `<待回填>`
+## Handoff Report（交付回执）
+
+- **提交状态**：`IN_REVIEW`，2026-11-28 完成执行端自测，等待独立核验。
+- **执行端 / 通道**：Codex / 通道 A，分支 `feat/p2-02b-decision-apis-and-ai-settings`，基线 `a8cd324`。
+- **交付**：四种原生 L2 预设共用三问定义，保留既有兼容模式。读者可通过「设置 → AI 分拣」测试草稿、保存配置并恢复环境默认值。SQLite 保存部分覆盖，热更新沿用原 L3 实例与计数器。
+- **实际改动文件清单**（含新增文件，共 40 个）：
+  - `backend/cmd/fusion/main.go`
+  - `backend/internal/ai/README.md`
+  - `backend/internal/ai/config.go`
+  - `backend/internal/ai/config_test.go`
+  - `backend/internal/ai/decision.go`
+  - `backend/internal/ai/decision_config.go`
+  - `backend/internal/ai/decision_native.go`
+  - `backend/internal/ai/decision_native_test.go`
+  - `backend/internal/ai/decision_test.go`
+  - `backend/internal/ai/evaluator.go`
+  - `backend/internal/ai/evaluator_test.go`
+  - `backend/internal/ai/settings.go`
+  - `backend/internal/ai/stats.go`
+  - `backend/internal/handler/ai_settings.go`
+  - `backend/internal/handler/ai_settings_test.go`
+  - `backend/internal/handler/handler.go`
+  - `backend/internal/model/model.go`
+  - `backend/internal/pkg/httpc/client.go`
+  - `backend/internal/pkg/httpc/ssrf.go`
+  - `backend/internal/pkg/httpc/ssrf_test.go`
+  - `backend/internal/pull/puller.go`
+  - `backend/internal/store/ai_settings.go`
+  - `backend/internal/store/ai_settings_test.go`
+  - `backend/internal/store/migrations/008_ai_settings.sql`
+  - `deploy/.env.example`
+  - `deploy/docker-compose.yml`
+  - `frontend/src/components/settings/ai-settings-tab.tsx`
+  - `frontend/src/components/settings/settings-dialog.tsx`
+  - `frontend/src/lib/api/index.ts`
+  - `frontend/src/lib/api/types.ts`
+  - `frontend/src/lib/i18n/messages/de.ts`
+  - `frontend/src/lib/i18n/messages/en.ts`
+  - `frontend/src/lib/i18n/messages/es.ts`
+  - `frontend/src/lib/i18n/messages/fr.ts`
+  - `frontend/src/lib/i18n/messages/pt.ts`
+  - `frontend/src/lib/i18n/messages/ru.ts`
+  - `frontend/src/lib/i18n/messages/sv.ts`
+  - `frontend/src/lib/i18n/messages/zh.ts`
+  - `tasks/INDEX.md`
+  - `tasks/P2-02b-decision-apis-and-ai-settings.md`
+- **实测验证命令与观察结果**：
+  - WSL Debian，`backend/` 执行 `go test -count=1 ./...`，9 个含测试包通过，3 个包无测试文件。`go vet ./...` 退出码 0。
+  - 本地 `httptest` 覆盖四个原生协议、旧适配器、禁止重定向与私网拨号。处理器测试覆盖读者鉴权、字段校验、密钥掩码、留空保留、清除、恢复、RSS 在线调整与草稿探测限流。存储测试覆盖数据库重开与 Linux 文件权限，Evaluator 测试覆盖重载后 L3 CLI 实例与计数连续。
+  - `frontend/` 执行 `pnpm run typecheck`、`pnpm exec tsc -p tsconfig.app.json --noEmit`、`pnpm build`，均退出 0。`pnpm test --run` 通过 8 个文件、40 项测试。`pnpm run check:i18n` 确认所有语言词典完整，每种 394 个键。
+  - Edge 通过生产前端、真实 Go 路由及临时 SQLite 数据库完成交互验收。切换 Cloudflare 时账户栏正确显隐；HTTP JSON 草稿通过本地模拟服务返回 `pass/high/ai`，测试后 RSS 预算仍为 13。保存后读回 17，输入框已清空，接口仅显示掩码，浏览器 localStorage 未出现测试密钥。确认恢复后预算回到 13，390px 视口无页面横向溢出。
+  - 在 WSL 执行 `docker compose --env-file /dev/null -f deploy/docker-compose.yml config --quiet`，为 Compose 必填的 `FUSION_PASSWORD`、`INGEST_TOKEN`、`X_AUTH_TOKEN` 传入临时占位值，退出 0。
+  - `git status --porcelain` 核对 40 个任务变更均在 Owned Files 内，`git diff --check` 通过。原有未跟踪目录 `Temp/` 保持原状。
+- **遗留事项**：
+  - 外部厂商协议按任务卡与本地 HTTP 测试服务验收，真实账户的网络、鉴权及配额仍需在部署环境用「测试连接」核验。
+  - 仓库的 TypeScript 7 对根配置中旧的 `baseUrl` 报 TS5102，直接运行 `pnpm exec tsc --noEmit` 失败；项目自带的引用工程类型检查与生产构建均通过。附加 ESLint 检查在加载插件时报告当前 typescript-eslint 不支持 TS 7。两个工具链问题涉及本卡只读的前端配置或依赖，留给协调者另行处理。
+  - 等待独立核验及合入。

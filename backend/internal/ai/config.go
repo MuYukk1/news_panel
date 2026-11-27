@@ -22,6 +22,7 @@ const (
 // Config holds every AI_* knob with safe defaults. APIKey is secret: it must
 // never appear in logs or returned errors.
 type Config struct {
+	RSSLimit          int
 	Decision          DecisionConfig
 	Enabled           bool
 	Provider          string // openai | cli | l1
@@ -51,6 +52,7 @@ func ConfigFromEnv(logger *slog.Logger) Config {
 		logger = slog.Default()
 	}
 	cfg := Config{
+		RSSLimit:          RSSMaxItemsPerPull(),
 		Provider:          strings.ToLower(envDefault("AI_PROVIDER", "openai")),
 		BaseURL:           envDefault("AI_BASE_URL", defaultBaseURL),
 		APIKey:            strings.TrimSpace(os.Getenv("AI_API_KEY")),
