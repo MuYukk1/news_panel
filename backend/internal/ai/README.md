@@ -13,11 +13,11 @@ RSS 单源开启 `ai_enabled` 后，按发布时间从新到旧评估本轮新�
 | 变量 | 默认值 | 说明 |
 | --- | --- | --- |
 | `AI_DECISION_ENABLED` | 空 | 留空自动探测，false 强制关闭 |
-| `AI_DECISION_PROVIDER` | `openai` | openai、http_json、off（或 none） |
-| `AI_DECISION_BASE_URL` | 空 | openai 缺省使用 https://api.openai.com/v1，http_json 填完整 POST 地址 |
-| `AI_DECISION_API_KEY` | 空 | 独立门控密钥，openai 必填，http_json 可选 |
+| `AI_DECISION_PROVIDER` | `openai` | `openai`、`typesafe`（TypeSafe AI Jev System One）、`http_json`、`off`（或 `none`） |
+| `AI_DECISION_BASE_URL` | 空 | `openai` 缺省 `https://api.openai.com/v1`，`typesafe` 缺省 `https://api.typesafe.ai/v1/systemone`，`http_json` 填完整 POST 地址 |
+| `AI_DECISION_API_KEY` | 空 | 独立门控密钥，`openai`/`typesafe` 必填，`http_json` 可选 |
 | `AI_DECISION_AUTH_HEADER` | `Authorization` | http_json 鉴权头名。Authorization 自动为裸密钥添加 Bearer 前缀，自定义头原样发送 |
-| `AI_DECISION_MODEL` | `gpt-4o-mini` | L2 请求中的 model |
+| `AI_DECISION_MODEL` | `gpt-4o-mini` / `jev-latest` | L2 请求中的 model（`typesafe` 缺省 `jev-latest`） |
 | `AI_DECISION_JSON_FORMAT` | `false` | 在 L2 OpenAI-compatible 请求中指定 json_object |
 | `AI_DECISION_TIMEOUT_SECONDS` | `6` | L2 单次 HTTP 调用超时秒数 |
 | `AI_DECISION_L3_PRIORITIES` | `critical,high,normal` | 放行后进入 L3 的优先级 |

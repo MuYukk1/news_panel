@@ -12,6 +12,11 @@ import (
 	"time"
 )
 
+const (
+	defaultTypeSafeBaseURL = "https://api.typesafe.ai/v1/systemone"
+	defaultTypeSafeModel   = "jev-latest"
+)
+
 var headerNamePattern = regexp.MustCompile("^[!#$%&'*+.^_`|~0-9a-zA-Z-]+$")
 
 type DecisionConfig struct {
@@ -58,6 +63,13 @@ func decisionConfigFromEnv(log *slog.Logger) DecisionConfig {
 		if c.BaseURL == "" {
 			c.BaseURL = defaultBaseURL
 		}
+	case "typesafe":
+		if c.BaseURL == "" {
+			c.BaseURL = defaultTypeSafeBaseURL
+		}
+		if strings.TrimSpace(os.Getenv("AI_DECISION_MODEL")) == "" {
+			c.Model = defaultTypeSafeModel
+		}
 	case "http_json":
 		if !headerNamePattern.MatchString(c.AuthHeader) {
 			log.Warn("invalid AI_DECISION_AUTH_HEADER; using Authorization")
@@ -72,7 +84,7 @@ func decisionConfigFromEnv(log *slog.Logger) DecisionConfig {
 		return c
 	}
 	enabled := decisionBool(log, "AI_DECISION_ENABLED", true)
-	if c.BaseURL == "" || (c.Provider == "openai" && c.APIKey == "") {
+	if c.BaseURL == "" || ((c.Provider == "openai" || c.Provider == "typesafe") && c.APIKey == "") {
 		return c
 	}
 	u, err := url.Parse(c.BaseURL)

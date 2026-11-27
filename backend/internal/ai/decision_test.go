@@ -54,6 +54,21 @@ func TestDecisionConfig(t *testing.T) {
 	if cfg().Enabled {
 		t.Fatal("invalid endpoint enabled")
 	}
+	t.Setenv("AI_DECISION_PROVIDER", "typesafe")
+	t.Setenv("AI_DECISION_BASE_URL", "")
+	t.Setenv("AI_DECISION_API_KEY", "")
+	t.Setenv("AI_DECISION_MODEL", "")
+	if c := cfg(); c.Enabled || c.BaseURL != defaultTypeSafeBaseURL || c.Model != defaultTypeSafeModel {
+		t.Fatalf("unexpected typesafe defaults: %+v", c)
+	}
+	t.Setenv("AI_DECISION_API_KEY", "apikey_test")
+	if c := cfg(); !c.Enabled || c.Model != defaultTypeSafeModel {
+		t.Fatalf("typesafe auto-detect failed: %+v", c)
+	}
+	t.Setenv("AI_DECISION_MODEL", "jev-1.14.0")
+	if c := cfg(); !c.Enabled || c.Model != "jev-1.14.0" {
+		t.Fatalf("typesafe model override failed: %+v", c)
+	}
 	for _, tc := range []struct {
 		raw  string
 		want int
@@ -71,12 +86,28 @@ func TestDecisionAdapters(t *testing.T) {
 	in.Author = "reporter"
 	l1 := triage.Result{Domain: "deals", Priority: "high"}
 	for _, tc := range []struct{ provider, header, key, wantAuth string }{
-		{"http_json", "X-API-Key", key, key}, {"http_json", "Authorization", key, "Bearer " + key}, {"http_json", "Authorization", "Token " + key, "Token " + key}, {"openai", "Authorization", key, "Bearer " + key},
+		{"http_json", "X-API-Key", key, key}, {"http_json", "Authorization", key, "Bearer " + key}, {"http_json", "Authorization", "Token " + key, "Token " + key}, {"openai", "Authorization", key, "Bearer " + key}, {"typesafe", "Authorization", key, "Bearer " + key},
 	} {
 		t.Run(tc.provider+"/"+tc.header, func(t *testing.T) {
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if r.Method != "POST" || r.Header.Get(tc.header) != tc.wantAuth || r.Header.Get("Content-Type") != "application/json" {
 					t.Error("bad method or headers")
+				}
+				if tc.provider == "typesafe" {
+					var body struct {
+						Model     string
+						State     string
+						Questions map[string]typeSafeQuestion
+					}
+					if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+						t.Error(err)
+						return
+					}
+					if r.URL.Path != "/v1/systemone" || body.Model != "light" || !strings.Contains(body.State, strings.Repeat("测", 2000)) || strings.Contains(body.State, strings.Repeat("测", 2001)) || body.Questions["action"].Type != "choice" || body.Questions["priority"].Type != "choice" || body.Questions["domain"].Type != "choice" {
+						t.Error("bad typesafe request")
+					}
+					fmt.Fprint(w, `{"model":"jev-1.14.0","answers":{"action":{"type":"choice","choice":"pass","confidence":0.95},"priority":{"type":"choice","choice":"normal","confidence":0.80},"domain":{"type":"choice","choice":"unknown","confidence":0.50}}}`)
+					return
 				}
 				if tc.provider == "openai" {
 					var body struct {
@@ -109,7 +140,7 @@ func TestDecisionAdapters(t *testing.T) {
 			defer srv.Close()
 			cfg := Config{Topics: "topics", Decision: DecisionConfig{Enabled: true, Provider: tc.provider, BaseURL: srv.URL, APIKey: tc.key, AuthHeader: tc.header, Model: "light", JSONFormat: true, Timeout: time.Second}}
 			got, err := newDecisionProvider(cfg).Decide(context.Background(), in, l1)
-			if err != nil || got.Action != "pass" || got.Priority != "normal" || got.Domain != l1.Domain || utf8.RuneCountInString(got.Reason) != 64 || strings.Contains(got.Reason, key) {
+			if err != nil || got.Action != "pass" || got.Priority != "normal" || got.Domain != l1.Domain || strings.Contains(got.Reason, key) || (tc.provider != "typesafe" && utf8.RuneCountInString(got.Reason) != 64) || (tc.provider == "typesafe" && !strings.HasPrefix(got.Reason, "jev:pass(0.95)")) {
 				t.Fatalf("bad normalized decision: %+v (%v)", got, err)
 			}
 		})
@@ -118,7 +149,7 @@ func TestDecisionAdapters(t *testing.T) {
 
 func TestDecisionRejectsOversizeAndErrors(t *testing.T) {
 	const key = "example-secret"
-	for _, provider := range []string{"openai", "http_json"} {
+	for _, provider := range []string{"openai", "http_json", "typesafe"} {
 		for _, mode := range []string{"oversize", "status", "invalid", "timeout"} {
 			t.Run(provider+"/"+mode, func(t *testing.T) {
 				srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
