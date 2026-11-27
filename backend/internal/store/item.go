@@ -140,54 +140,76 @@ type BatchCreateItemInput struct {
 // BatchCreateItemsIgnore inserts items in one transaction and ignores duplicates by (feed_id, guid).
 // Returns the number of newly inserted rows.
 func (s *Store) BatchCreateItemsIgnore(feedID int64, inputs []BatchCreateItemInput) (int, error) {
-	if len(inputs) == 0 {
-		return 0, nil
-	}
+	n, _, err := s.batchCreateRSS(feedID, inputs, 0)
+	return n, err
+}
 
+type CreatedItem struct {
+	ID int64
+	BatchCreateItemInput
+}
+
+// BatchCreateItemsForTriage returns only rows inserted by this transaction.
+func (s *Store) BatchCreateItemsForTriage(feedID int64, inputs []BatchCreateItemInput) ([]CreatedItem, error) {
+	_, items, err := s.BatchCreateItemsWithTriageLimit(feedID, inputs, 0)
+	return items, err
+}
+
+// BatchCreateItemsWithTriageLimit keeps overflow unscored in the same transaction.
+// The caller supplies newest-first inputs. A zero limit means unlimited.
+func (s *Store) BatchCreateItemsWithTriageLimit(feedID int64, inputs []BatchCreateItemInput, limit int) (int, []CreatedItem, error) {
+	if limit == 0 {
+		limit = len(inputs)
+	}
+	return s.batchCreateRSS(feedID, inputs, limit)
+}
+
+func (s *Store) batchCreateRSS(feedID int64, inputs []BatchCreateItemInput, pendingLimit int) (int, []CreatedItem, error) {
+	if len(inputs) == 0 {
+		return 0, nil, nil
+	}
 	tx, err := s.db.Begin()
 	if err != nil {
-		return 0, err
+		return 0, nil, err
 	}
 	defer tx.Rollback()
-
-	stmt, err := tx.Prepare(`
-		INSERT INTO items (feed_id, guid, title, link, content, pub_date, triage_status)
-		VALUES (:feed_id, :guid, :title, :link, :content, :pub_date, 'kept')
-		ON CONFLICT(feed_id, guid) DO NOTHING
-	`)
+	stmt, err := tx.Prepare(`INSERT INTO items(feed_id,guid,title,link,content,pub_date,triage_status)
+ VALUES(?,?,?,?,?,?,?) ON CONFLICT(feed_id,guid) DO NOTHING`)
 	if err != nil {
-		return 0, err
+		return 0, nil, err
 	}
 	defer stmt.Close()
-
+	var pending []CreatedItem
 	created := 0
-	for _, input := range inputs {
-		result, err := stmt.Exec(
-			sql.Named("feed_id", feedID),
-			sql.Named("guid", input.GUID),
-			sql.Named("title", input.Title),
-			sql.Named("link", input.Link),
-			sql.Named("content", input.Content),
-			sql.Named("pub_date", input.PubDate),
-		)
-		if err != nil {
-			return 0, err
+	for _, in := range inputs {
+		status := "kept"
+		if len(pending) < pendingLimit {
+			status = "pending"
 		}
-
-		affected, err := result.RowsAffected()
+		res, err := stmt.Exec(feedID, in.GUID, in.Title, in.Link, in.Content, in.PubDate, status)
 		if err != nil {
-			return 0, err
+			return 0, nil, err
 		}
-		if affected > 0 {
-			created++
+		n, err := res.RowsAffected()
+		if err != nil {
+			return 0, nil, err
+		}
+		if n == 0 {
+			continue
+		}
+		created++
+		if status == "pending" {
+			id, err := res.LastInsertId()
+			if err != nil {
+				return 0, nil, err
+			}
+			pending = append(pending, CreatedItem{ID: id, BatchCreateItemInput: in})
 		}
 	}
-
 	if err := tx.Commit(); err != nil {
-		return 0, err
+		return 0, nil, err
 	}
-
-	return created, nil
+	return created, pending, nil
 }
 
 func (s *Store) UpdateItemUnread(id int64, unread bool) error {

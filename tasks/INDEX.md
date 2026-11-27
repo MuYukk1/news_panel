@@ -15,7 +15,7 @@
 | `P1-03` | 核心内置 L1+L2 AI 过滤与分拣管线（OpenAI-compatible + 可选 CLI 适配器） | Phase 1 (v0.1) | 通道 A / `Qoder` | `DONE` | `backend/internal/ai/**`, `backend/cmd/fusion/main.go`（最小接入） | [P1-03-ai-triage-pipeline.md](./P1-03-ai-triage-pipeline.md) |
 | `P1-04` | 统一浅色磨砂液态玻璃高信号情报工作台前端重构（含双时间显示） | Phase 1 (v0.1) | 通道 A / Antigravity（`feat/p1-04-high-signal-panel` 已合入 `main`） | `DONE` | `frontend/index.html`, `frontend/src/**` | [P1-04-high-signal-panel.md](./P1-04-high-signal-panel.md) |
 | `P2-01` | 阅读抽屉流畅优化、RSS 未打分归类、订阅源/插件开关、来源筛选与 OPML 多选导入 | Phase 2 (v0.2) | 通道 A / Antigravity（`feat/p2-01-ux-rss-source-controls` 已合入 `main`） | `DONE` | `backend/internal/{model,store,handler,pull}/**`, `frontend/src/**` | [P2-01-ux-rss-source-controls.md](./P2-01-ux-rss-source-controls.md) |
-| `P2-02` | 三级递进 AI 分拣管线（L1 → 可选 L2 云端 Decision 门控 → L3 精筛）与 RSS `ai_enabled` 接入 | Phase 2 (v0.2) | 待认领（独立分支 `feat/p2-02-three-stage-ai-pipeline`） | `TODO` | `backend/internal/ai/**`, `backend/internal/{store/item,pull/puller,handler}/**`, `backend/cmd/fusion/main.go`, `deploy/{docker-compose.yml,.env.example}` | [P2-02-three-stage-ai-pipeline.md](./P2-02-three-stage-ai-pipeline.md) |
+| `P2-02` | 三级递进 AI 分拣管线（L1 → 可选 L2 云端 Decision 门控 → L3 精筛）与 RSS `ai_enabled` 接入 | Phase 2 (v0.2) | Codex（独立分支 `feat/p2-02-three-stage-ai-pipeline`） | `IN_REVIEW` | `backend/internal/ai/**`, `backend/internal/{store/item,pull/puller,handler}/**`, `backend/cmd/fusion/main.go`, `deploy/{docker-compose.yml,.env.example}` | [P2-02-three-stage-ai-pipeline.md](./P2-02-three-stage-ai-pipeline.md) |
 
 ---
 

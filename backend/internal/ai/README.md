@@ -1,29 +1,46 @@
-# `internal/ai` — v0.1 内置 L1+L2 AI 分拣管线
+# 内置三级 AI 分拣管线
 
-实现 [`triage.TriageEvaluator`](../triage/triage.go) 契约的两段式信息分拣器（`DEC-004`）：
+插件投递和启用 AI 的原生 RSS 共用一个评估器、CLI 冷却锁和统计实例。各层按以下顺序执行。
 
-```text
-triage.Input ──▶ L1 本地规则粗筛（<1ms，零网络）
-                   ├─ 命中噪声 ──▶ filtered（priority=low，不消耗 L2 Token）
-                   └─ 放行 ──▶ L2 CompletionProvider（openai | cli）
-                                 ├─ 成功 ──▶ 评分/打标/摘要/优先级 + keep 阈值裁定
-                                 └─ 失败 ──▶ AI_FALLBACK_MODE（keep_l1 降级放行 | fail 落库 failed）
-```
+1. **L1 本地规则**拦截明显噪声。若主模型关闭、选用 `l1` 或缺少主模型配置，直接返回本地结果。
+2. **L2 可选决策门控**给出放行或拦截、优先级及粗领域。缺少门控配置、`AI_DECISION_ENABLED=false` 或 provider 为 `off` 时，L1 放行条目直达 L3。L2 拦截及未达 L3 优先级的条目均保留空分数。默认保留低优先级条目到「未打分」。
+3. **L3 主模型**通过 OpenAI-compatible HTTP 或受控 CLI 生成评分、中文摘要、标签、最终优先级及裁定。若经过 L2 放行，提示词附带初判优先级和领域。L3 失败时沿用原有 `AI_FALLBACK_MODE` 和 `l2-fallback` 兼容标签。
 
-- **纯 Go 标准库**，零新增第三方依赖（不修改 `go.mod` / `go.sum`）。
-- **资源红线**：复用单个 `*http.Client` 连接池；CLI 适配器以 `sync.Mutex` 强制单并发串行 + 超时保护，适配 1C1G–2C2G 微型 VPS。
-- **安全红线**：不读取/修改 `.env`；`AI_API_KEY` 等凭证经 `redact()` 脱敏后才可进入日志或错误；所有返回值均通过 `triage.Result.Validate()`。
-- **不伪造分数**：未走 L2 模型评分的兜底放行条目 `AIScore = nil`。
+RSS 单源开启 `ai_enabled` 后，按发布时间从新到旧评估本轮新入库条目。数据库按源和 GUID 去重，已存在条目不占额度；超额或关闭 AI 的条目保留为未打分。单条评估失败会记为 `failed`，其余条目继续处理。
 
-## 装配入口
+## L2 与 RSS 配置
 
-```go
-// backend/cmd/fusion/main.go
-h, err := handler.New(st, cfg, puller, ai.NewFromEnv())
-srv := &http.Server{ /* ... */ WriteTimeout: ai.HTTPWriteTimeout() }
-```
+| 变量 | 默认值 | 说明 |
+| --- | --- | --- |
+| `AI_DECISION_ENABLED` | 空 | 留空自动探测，false 强制关闭 |
+| `AI_DECISION_PROVIDER` | `openai` | openai、http_json、off（或 none） |
+| `AI_DECISION_BASE_URL` | 空 | openai 缺省使用 https://api.openai.com/v1，http_json 填完整 POST 地址 |
+| `AI_DECISION_API_KEY` | 空 | 独立门控密钥，openai 必填，http_json 可选 |
+| `AI_DECISION_AUTH_HEADER` | `Authorization` | http_json 鉴权头名。Authorization 自动为裸密钥添加 Bearer 前缀，自定义头原样发送 |
+| `AI_DECISION_MODEL` | `gpt-4o-mini` | L2 请求中的 model |
+| `AI_DECISION_JSON_FORMAT` | `false` | 在 L2 OpenAI-compatible 请求中指定 json_object |
+| `AI_DECISION_TIMEOUT_SECONDS` | `6` | L2 单次 HTTP 调用超时秒数 |
+| `AI_DECISION_L3_PRIORITIES` | `critical,high,normal` | 放行后进入 L3 的优先级 |
+| `AI_DECISION_LOW_ACTION` | `keep_unscored` | 未达 L3 门槛时保留为未打分，设 filter 则拦截 |
+| `AI_DECISION_FALLBACK_MODE` | `skip_to_l3` | L2 异常时直通 L3，也可选 keep_l1 或 fail |
+| `AI_RSS_MAX_ITEMS_PER_PULL` | `20` | 每个开启 AI 的 RSS 源单轮最多评估的新条目数，0 为不限 |
 
-`NewFromEnv()` 永不返回 nil、永不阻塞启动：未启用/无 Key/配置缺失时自动退化为 L1-only。
+`openai` 使用与主模型相同的路径拼接规则。门控提示词要求单个 JSON 对象，包括 `action`、`priority`、`domain` 和可选简短原因 `reason`。
+
+`http_json` 向配置地址 POST JSON，携带 `model`、`topics`、`source_type`、`source_id`、`author`、`title`、`content`（最多 2000 个字符）、`url`、`published_at`（UTC RFC3339）、`l1_domain` 和 `l1_priority`。支持顶层或 `data`、`decision`、`result` 包装的响应，例如 `{"decision":{"keep":true,"priority":"high","domain":"ai"}}`。缺少领域时沿用 L1，缺少优先级时放行取 normal、拦截取 low。无有效裁定、超时和响应超过 1 MiB 会触发门控失败策略。
+
+## 运行统计
+
+使用面板读者会话请求 `GET /api/v1/ai/stats`。返回的 `data` 包含实际启用状态和 provider 类型，以及自进程启动以来 RSS 和插件合计的计数。重启后清零。
+
+| 计数 | 含义 |
+| --- | --- |
+| `l1_filtered` | 本地规则拦截 |
+| `l2_skipped` | 有可用 L3 时跳过未启用的门控 |
+| `l2_filtered`、`l2_passed` | 云端门控拦截或放行 |
+| `l2_bypassed_l3` | L2 放行后，因优先级未达门槛而省下的 L3 调用 |
+| `l2_errors` | 门控失败并进入配置的降级策略 |
+| `l3_called`、`l3_kept`、`l3_filtered`、`l3_fallback` | 主模型调用、最终保留、最终拦截及失败降级 |
 
 ## 环境变量（全部从进程环境读取，含安全默认值）
 
@@ -34,10 +51,10 @@ srv := &http.Server{ /* ... */ WriteTimeout: ai.HTTPWriteTimeout() }
 | `AI_BASE_URL` | `https://api.openai.com/v1` | OpenAI-compatible 基址；智能拼接 `/chat/completions`（见下） |
 | `AI_API_KEY` | 无 | Bearer Token；为空时 openai 通道自动降级 L1-only（不报错） |
 | `AI_MODEL` | `gpt-4o-mini` | 模型名 |
-| `AI_TOPICS` | `投资催化剂与宏观突发,AI前沿动态与内测泄露,高时效薅羊毛与云资源优惠` | 注入 L2 Prompt 的自定义关注主题 |
+| `AI_TOPICS` | `投资催化剂与宏观突发,AI前沿动态与内测泄露,高时效薅羊毛与云资源优惠` | 注入 L2 和 L3 Prompt 的自定义关注主题 |
 | `AI_KEEP_MIN_SCORE` | `45` | `0..100`；`keep=false` 或 `score<阈值`（除非 priority 为 high/critical）→ `filtered` |
-| `AI_TIMEOUT_SECONDS` | `8` | 单条 L2 评估超时（CLI 测试建议 `15`–`20`） |
-| `AI_FALLBACK_MODE` | `keep_l1` | L2 失败策略：`keep_l1` 降级放行并加 `l2-fallback` 标签；`fail` 返回 error → 落库 `failed` |
+| `AI_TIMEOUT_SECONDS` | `8` | 单条 L3 评估超时（CLI 测试建议 `15`–`20`） |
+| `AI_FALLBACK_MODE` | `keep_l1` | L3 失败策略：`keep_l1` 降级放行并加 `l2-fallback` 标签；`fail` 返回 error → 落库 `failed` |
 | `AI_OPENAI_JSON_FORMAT` | `false` | `true` 时请求附 `response_format:{"type":"json_object"}`；不支持该字段的中转/开源模型保持 `false` |
 | `AI_L1_MIN_CONTENT_RUNES` | `10` | 去 URL/空白/@mention/`(media-only tweet)` 后正文有效字符下限；`0` 关闭短文本过滤 |
 | `AI_L1_FILTER_RETWEETS` | `false` | `true` 时按 `raw_meta.is_retweet` 过滤转推 |
@@ -83,7 +100,7 @@ AI_TIMEOUT_SECONDS=20
 AI_PROVIDER=l1
 ```
 
-## L2 输出契约与鲁棒解析
+## L3 输出契约与鲁棒解析
 
 Prompt 要求模型严格输出单段 JSON：
 
@@ -91,7 +108,7 @@ Prompt 要求模型严格输出单段 JSON：
 {"domain":"investing|ai|deals|other","score":0,"tags":["..."],"summary":"一句话高密度中文摘要","priority":"critical|high|normal|low","keep":true}
 ```
 
-解析兼容纯 JSON、```` ```json ```` 围栏、前后混杂散文；CLI 外层包裹（`result`/`content`/`message`/`text`，含流式多行 JSON）自动解包。字段防御：score 四舍五入并夹取 `0..100`；domain/priority 大小写归一化、未知值回退安全默认；tags 去重截断（≤6 个、每个 ≤32 字符）；summary 截断 200 字符。
+解析兼容纯 JSON、```` ```json ```` 围栏、前后混杂散文；CLI 外层包裹（`result`/`content`/`message`/`text`，含流式多行 JSON）自动解包。字段防御：score 四舍五入并夹取 `0..100`；domain/priority 大小写归一化、未知值回退安全默认；tags 去重截断（≤6 个、每个 ≤32 字符）；summary 最多保留 500 个字符并附截断标记。
 
 ## 测试
 

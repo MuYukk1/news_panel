@@ -4,7 +4,7 @@
 - **Task ID**：`P2-02`
 - **Phase / Milestone**：`Phase 2 (v0.2 核心处理管线升级)`
 - **前置门禁（Gate Dependency）**：`Gate 1 已于 2026-11-20 批准（DEC-006 / DEC-007 已锁定）+ P2-01 已 DONE 并合入 main`
-- **当前状态（Status）**：`TODO`（可选：`TODO` | `IN_PROGRESS` | `IN_REVIEW` | `DONE` | `BLOCKED`）
+- **当前状态（Status）**：`DONE`（2026-11-27 LEAD 独立复验 Go 全量单测、代码边界与安全审计通过后合入 `main`）
 - **调度通道与目标执行端（Channel / Runner）**：`通道 A / 通道 B 均可（纯 Go 后端切片 + 最小运维样例，边界干净）`
 - **工作区 / 分支策略（Worktree / Branch）**：**严禁直接在 `main` 提交代码**。须在独立分支或 worktree 执行：
   - `git checkout -b feat/p2-02-three-stage-ai-pipeline`（或 `git worktree add ../news_panel-p2-02 -b feat/p2-02-three-stage-ai-pipeline`）
@@ -214,19 +214,19 @@
 
 ## 验收标准与验证命令（Acceptance Criteria & Verification）
 
-- [ ] **未配置或显式关闭 L2 时自动跳过**：
+- [x] **未配置或显式关闭 L2 时自动跳过**：
   - 未配置 `AI_DECISION_API_KEY` / `AI_DECISION_BASE_URL` 时，`l2_enabled=false`，条目经 L1 后直接进入 L3，`l2_skipped` 递增，零报错；
   - 已配置凭证但设 `AI_DECISION_ENABLED=false` 或 `AI_DECISION_PROVIDER=off` 时，同样彻底关闭 L2、直接由 L1 → L3。
-- [ ] **三级门控有效削减 L3 调用**：
+- [x] **三级门控有效削减 L3 调用**：
   - L1 拦截条目：0 次 L2 调用、0 次 L3 调用；
   - L2 判 `filter` 条目：返回 `filtered`（`ai_score=nil`、`l2-decision-filtered`），0 次 L3 调用；
   - L2 判 `pass` 且优先级未命中 `AI_DECISION_L3_PRIORITIES`（如 `low`）：按 `AI_DECISION_LOW_ACTION` 跳过 L3（默认 `keep_unscored` 落入未打分分桶），0 次 L3 调用；
   - L2 判 `pass` 且命中 `critical / high / normal`：携带 L2 初判线索进入 L3 完成打分与中文摘要；
   - L2 调用异常/超时/畸形 JSON：按 `AI_DECISION_FALLBACK_MODE` 处理（默认 `skip_to_l3` fail-open 不丢要闻），且错误信息严格脱敏不泄露 `AI_DECISION_API_KEY`。
-- [ ] **双云端适配器就绪**：`openai` 与 `http_json` 两种 `DecisionProvider` 均通过 `httptest.Server` 单元测试验证（含自定义鉴权头、包装 JSON 响应、`keep` 布尔兼容、超长响应截断与脱敏）。
-- [ ] **原生 RSS `ai_enabled` 闭环与防洪护栏**：`puller` 对 `ai_enabled=false` 的 RSS 源不触发评估（零消耗）；对 `ai_enabled=true` 的 RSS 源仅对新插入条目运行三级评估并受 `AI_RSS_MAX_ITEMS_PER_PULL` 单轮上限保护（超限条目保留为未打分），重复拉取同一 GUID 不重复消耗 AI。
-- [ ] **观测接口与部署透传**：`GET /api/v1/ai/stats` 需要读者鉴权（插件 Token 返回 `401`），返回准确计数且零密钥泄露；`deploy/docker-compose.yml` 与 `deploy/.env.example` 已补齐可选 `AI_DECISION_*` 变量。
-- [ ] **全量测试通过 & 边界纯净**：
+- [x] **双云端适配器就绪**：`openai` 与 `http_json` 两种 `DecisionProvider` 均通过 `httptest.Server` 单元测试验证（含自定义鉴权头、包装 JSON 响应、`keep` 布尔兼容、超长响应截断与脱敏）。
+- [x] **原生 RSS `ai_enabled` 闭环与防洪护栏**：`puller` 对 `ai_enabled=false` 的 RSS 源不触发评估（零消耗）；对 `ai_enabled=true` 的 RSS 源仅对新插入条目运行三级评估并受 `AI_RSS_MAX_ITEMS_PER_PULL` 单轮上限保护（超限条目保留为未打分），重复拉取同一 GUID 不重复消耗 AI。
+- [x] **观测接口与部署透传**：`GET /api/v1/ai/stats` 需要读者鉴权（插件 Token 返回 `401`），返回准确计数且零密钥泄露；`deploy/docker-compose.yml` 与 `deploy/.env.example` 已补齐可选 `AI_DECISION_*` 变量。
+- [x] **全量测试通过 & 边界纯净**：
   ```bash
   # 1) Go 全量单测（含竞态检查建议）
   cd backend
@@ -240,11 +240,31 @@
 ---
 
 ## Handoff Report（交付回执 —— 结束前必填）
-- **提交状态**：`TODO`（执行端完成后改为 `IN_REVIEW` 或 `BLOCKED`）
-- **执行端 / 通道**：`<待认领>`
-- **实际改动文件清单**：
-  - `<待填写>`
-- **实测验证命令与观察结果**（仅填写最终修改后亲自跑过并观察到的真实结果）：
-  - `<待填写>`
-- **边界变更申请 / 遗留风险 / 下一步建议**：
-  - `<待填写>`
+- **提交状态**：`IN_REVIEW`，2026-11-27。
+- **执行端 / 通道**：Codex / 通道 A，分支 `feat/p2-02-three-stage-ai-pipeline`，起点 `2d6efa9`。
+- **交付内容**：本地 L1、可选云端 L2 和原主模型 L3 已串联。读者统计接口和 RSS 使用同一评估实例。RSS 按发布时间排序，在一个 SQLite 事务内仅为成功插入的 GUID 分配 AI 额度，超额条目直接保留为未打分。保留既有主模型降级标签 `l2-fallback`，兼容已有调用方。
+- **实际改动文件**（均相对于仓库根目录）：
+  - AI 管线：`backend/internal/ai/config.go`、`backend/internal/ai/decision_config.go`、`backend/internal/ai/decision.go`、`backend/internal/ai/evaluator.go`、`backend/internal/ai/openai.go`、`backend/internal/ai/parse.go`、`backend/internal/ai/stats.go`。
+  - AI 文档与测试：`backend/internal/ai/README.md`、`backend/internal/ai/config_test.go`、`backend/internal/ai/decision_test.go`。
+  - RSS 存储与拉取：`backend/internal/store/item.go`、`backend/internal/store/rss_triage_test.go`、`backend/internal/pull/puller.go`、`backend/internal/pull/puller_test.go`。
+  - 接口与装配：`backend/internal/handler/handler.go`、`backend/internal/handler/ai_stats.go`、`backend/internal/handler/ai_stats_test.go`、`backend/cmd/fusion/main.go`。
+  - 部署与交接：`deploy/docker-compose.yml`、`deploy/.env.example`、`tasks/INDEX.md`、`tasks/P2-02-three-stage-ai-pipeline.md`。
+- **实测验证**：
+  - WSL Debian，`go version go1.26.11 linux/amd64`。在 `backend/` 执行 `go test -count=1 ./...`，9 个含测试包全部通过，另有 3 个包无测试。执行 `go vet ./...`，退出码 0。
+  - `go test -count=10 -run 'Test(Decision|SharedEvaluator|RSSBudget|AIStats|BatchCreateItemsForTriage)' ./internal/ai ./internal/pull ./internal/store ./internal/handler`，4 个包均通过。覆盖 HTTP 决策及异常、取消、真实调用次数、18 个并发评估的统计、读者会话成功与插件 token 单独访问返回 401、RSS 重复拉取及失败隔离。
+  - 使用测试占位凭证运行 `docker compose --env-file /dev/null -f deploy/docker-compose.yml config --quiet`，退出码 0。Compose 与示例环境文件的 12 项新环境变量逐名比对，差异 0。
+  - `git diff --name-only` 与新文件清单合计 22 个任务文件，全部落在 Owned Files 内；`git diff --check` 通过。工作区原有未跟踪目录 `Temp/` 未纳入变更。
+- **遗留与核验范围**：
+  - 两种 L2 协议均用本地 `httptest.Server` 验证。具体供应商仍由 DEC-008 决定，真实服务延迟与节省额度需用部署后的统计观测。
+  - 尝试 `go test -race -count=1 ./...`，工具链报告 `-race requires cgo`，该 WSL 环境未提供 C 编译器。本次并发测试按普通构建运行。
+  - RSS 上限按新条目生效，重复拉取不会重评。进程若在插入后被强制终止，来不及回写的 RSS 条目会留在 `pending`。正常请求取消会回写失败状态。
+  - 等待独立核验和合入；Gate 2 状态由人工验收决定。
+
+### LEAD 独立复验记录（Antigravity LEAD · 2026-11-27）
+- **核验结论**：`DONE`（全部 6 项验收标准、文件边界审计、安全/脱敏审查及 Go 全量测试与 `go vet` 独立复验全部通过，合入 `main`）。
+- **边界与安全审查要点**：
+  - 全部 22 个改动/新增文件 100% 落在 `Owned Files` 内，未改动 `go.mod`/`go.sum`、`migrations/**`、`frontend/**`、`plugins/**`、`Dockerfile`、`Temp/**`；
+  - `decision.go` 拒绝 HTTP 重定向防凭证泄露、响应体严格限长 1 MiB、`headerNamePattern` 防头部注入、`safeError` 双密钥脱敏；
+  - `BatchCreateItemsWithTriageLimit` 在单事务内仅为新插入 GUID 计入 RSS AI 额度，超额保留为未打分；上下文取消时使用 `context.WithoutCancel` 收尾已提交 `pending` 行防孤儿状态。
+- **LEAD 独立实测输出**（WSL Linux `go1.27.4`）：
+  - `cd backend && go test -count=1 ./... && go vet ./...` → **全部 9 个含测试包 PASS，退出码 0**（`ai` / `auth` / `config` / `handler` / `pkg/httpc` / `pull` / `pullpolicy` / `store` / `triage`）。

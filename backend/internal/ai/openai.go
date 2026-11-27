@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -69,22 +68,28 @@ func (p *OpenAIProvider) Complete(ctx context.Context, systemPrompt, userPrompt 
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.endpoint, bytes.NewReader(body))
 	if err != nil {
-		return "", fmt.Errorf("openai build request: %w", err)
+		return "", errors.New("openai: invalid request URL")
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+p.apiKey)
 
 	resp, err := p.client.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("openai request failed: %s", redact(err.Error(), p.apiKey))
+		if ctx.Err() != nil {
+			return "", ctx.Err()
+		}
+		if errors.Is(err, context.DeadlineExceeded) {
+			return "", context.DeadlineExceeded
+		}
+		return "", errors.New("openai request failed")
 	}
 	defer resp.Body.Close()
-	respBody, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	respBody, err := readModelResponse(resp.Body)
 	if err != nil {
 		return "", fmt.Errorf("openai read response: %s", redact(err.Error(), p.apiKey))
 	}
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("openai status %d: %s", resp.StatusCode, redact(snippet(respBody, 200), p.apiKey))
+		return "", fmt.Errorf("openai status %d: [REDACTED]", resp.StatusCode)
 	}
 	var parsed struct {
 		Choices []struct {

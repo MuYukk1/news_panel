@@ -11,14 +11,14 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/gin-gonic/gin"
+	"github.com/mattn/go-isatty"
+	"golang.org/x/sync/errgroup"
 	"news_panel/internal/ai"
 	"news_panel/internal/config"
 	"news_panel/internal/handler"
 	"news_panel/internal/pull"
 	"news_panel/internal/store"
-	"github.com/gin-gonic/gin"
-	"github.com/mattn/go-isatty"
-	"golang.org/x/sync/errgroup"
 )
 
 func main() {
@@ -43,7 +43,9 @@ func run() error {
 	defer st.Close()
 
 	puller := pull.New(st, cfg)
-	h, err := handler.New(st, cfg, puller, ai.NewFromEnv())
+	eval := ai.NewFromEnv()
+	puller.SetEvaluator(eval)
+	h, err := handler.New(st, cfg, puller, eval)
 	if err != nil {
 		return err
 	}

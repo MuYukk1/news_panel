@@ -1,6 +1,4 @@
-// Package ai implements the v0.1 two-stage triage pipeline (L1 local rules +
-// L2 OpenAI-compatible / controlled CLI scoring) behind triage.TriageEvaluator.
-// It uses only the Go standard library and never reads or writes .env files.
+// Package ai implements local filtering, optional decision gating and model scoring.
 package ai
 
 import (
@@ -24,6 +22,7 @@ const (
 // Config holds every AI_* knob with safe defaults. APIKey is secret: it must
 // never appear in logs or returned errors.
 type Config struct {
+	Decision          DecisionConfig
 	Enabled           bool
 	Provider          string // openai | cli | l1
 	BaseURL           string
@@ -120,6 +119,7 @@ func ConfigFromEnv(logger *slog.Logger) Config {
 		logger.Warn("unknown AI_FALLBACK_MODE; using keep_l1", "value", cfg.FallbackMode)
 		cfg.FallbackMode = "keep_l1"
 	}
+	cfg.Decision = decisionConfigFromEnv(logger)
 	return cfg
 }
 
@@ -208,4 +208,13 @@ func redact(s, secret string) string {
 		return s
 	}
 	return strings.ReplaceAll(s, secret, "[REDACTED]")
+}
+
+// When Authorization includes a scheme, a provider may echo the token alone.
+func redactCredential(s, credential string) string {
+	s = redact(s, credential)
+	if _, token, ok := strings.Cut(credential, " "); ok {
+		return redact(s, strings.TrimSpace(token))
+	}
+	return s
 }

@@ -5,17 +5,17 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"strings"
 	"time"
 
 	"news_panel/internal/triage"
 )
 
-// Evaluator is the news_panel v0.1 triage.TriageEvaluator: L1 local rules
-// followed by an optional L2 completion provider. It never fabricates scores
-// (AIScore is nil unless L2 actually scored the item) and degrades safely when
-// AI is disabled, unconfigured, or failing.
+// Evaluator and its providers are shared by RSS and plugin ingest.
 type Evaluator struct {
+	decision DecisionProvider
+	counters pipelineCounters
 	cfg      Config
 	provider CompletionProvider // nil => L1-only
 	l1       *l1Rules
@@ -42,14 +42,22 @@ func New(cfg Config, logger *slog.Logger) *Evaluator {
 			logger.Warn("AI_PROVIDER=cli but AI_CLI_COMMAND is empty; degrading to L1-only")
 		} else {
 			e.provider = NewCLIProvider(cfg.CLICommand, cfg.CLIArgs, cfg.Timeout, cfg.CLICooldown)
-			logger.Info("ai L2 provider enabled", "provider", "cli", "command", cfg.CLICommand, "cooldown", cfg.CLICooldown)
+			logger.Info("ai L3 provider enabled", "provider", "cli", "cooldown", cfg.CLICooldown)
 		}
 	default: // openai
 		if cfg.APIKey == "" {
 			logger.Warn("AI_PROVIDER=openai but AI_API_KEY is empty; degrading to L1-only")
 		} else {
 			e.provider = NewOpenAIProvider(cfg.BaseURL, cfg.APIKey, cfg.Model, cfg.OpenAIJSONFormat, cfg.Timeout)
-			logger.Info("ai L2 provider enabled", "provider", "openai", "model", cfg.Model)
+			logger.Info("ai L3 provider enabled", "provider", "openai")
+		}
+	}
+	if e.provider != nil {
+		e.decision = newDecisionProvider(cfg)
+		if e.decision == nil {
+			logger.Info("ai L2 decision gate disabled or unconfigured; bypassing L2 directly to L3")
+		} else {
+			logger.Info("ai L2 decision gate enabled", "provider", e.decision.Name())
 		}
 	}
 	return e
@@ -68,44 +76,103 @@ func (e *Evaluator) Evaluate(ctx context.Context, in triage.Input) (triage.Resul
 	}
 	l1 := e.l1.evaluate(in)
 	if l1.TriageStatus == "filtered" {
-		return l1, nil // obvious noise never consumes L2 tokens
+		e.counters.l1Filtered.Add(1)
+		return l1, nil
 	}
 	if e.provider == nil {
 		l1.AITags = []string{"l1-only"}
 		return l1, nil
 	}
 
-	system, user := e.prompts(in, l1)
+	if e.decision == nil {
+		e.counters.l2Skipped.Add(1)
+		return e.score(ctx, in, l1, nil)
+	}
+	hint, err := e.decision.Decide(ctx, in, l1)
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return triage.Result{}, ctxErr
+	}
+	if err != nil {
+		e.counters.l2Errors.Add(1)
+		safe := e.safeError(err.Error())
+		e.logger.Warn("ai L2 decision failed", "mode", e.cfg.Decision.FallbackMode, "error", safe)
+		switch e.cfg.Decision.FallbackMode {
+		case "fail":
+			return triage.Result{}, errors.New(safe)
+		case "keep_l1":
+			l1.AITags = []string{"l2-decision-fallback"}
+			return l1, nil
+		default:
+			return e.score(ctx, in, l1, nil)
+		}
+	}
+	if hint.Action == "filter" {
+		e.counters.l2Filtered.Add(1)
+		return gateResult(l1, hint, "filtered", "l2-decision-filtered"), nil
+	}
+	e.counters.l2Passed.Add(1)
+	if !slices.Contains(e.cfg.Decision.L3Priorities, hint.Priority) {
+		e.counters.l2BypassedL3.Add(1)
+		if e.cfg.Decision.LowAction == "filter" {
+			return gateResult(l1, hint, "filtered", "l2-decision-low-filtered"), nil
+		}
+		return gateResult(l1, hint, "kept", "l2-decision-bypass"), nil
+	}
+	return e.score(ctx, in, l1, &hint)
+}
+
+func gateResult(l1 triage.Result, hint DecisionOutcome, status, tag string) triage.Result {
+	l1.Domain = hint.Domain
+	l1.Priority = hint.Priority
+	l1.TriageStatus = status
+	l1.AITags = []string{tag}
+	return l1
+}
+
+func (e *Evaluator) score(ctx context.Context, in triage.Input, l1 triage.Result, hint *DecisionOutcome) (triage.Result, error) {
+	system, user := e.l3Prompts(in, l1, hint)
+	e.counters.l3Called.Add(1)
 	completion, err := e.provider.Complete(ctx, system, user)
 	if err == nil {
 		var v verdict
 		if v, err = parseVerdict(completion); err == nil {
-			return normalizeVerdict(v, l1, e.cfg.KeepMinScore), nil
+			result := normalizeVerdict(v, l1, e.cfg.KeepMinScore)
+			if result.TriageStatus == "filtered" {
+				e.counters.l3Filtered.Add(1)
+			} else {
+				e.counters.l3Kept.Add(1)
+			}
+			return result, nil
 		}
 	}
 	if ctxErr := ctx.Err(); ctxErr != nil {
 		return triage.Result{}, ctxErr
 	}
-	return e.fallback(in, l1, err)
+	e.counters.l3Fallback.Add(1)
+	return e.fallback(l1, err)
 }
 
-// fallback applies AI_FALLBACK_MODE after an L2 failure. keep_l1 preserves the
+// fallback applies AI_FALLBACK_MODE after an L3 failure. keep_l1 preserves the
 // L1 verdict (important information is never lost) with an l2-fallback tag;
 // fail returns a redacted error so the handler stores triage_status=failed.
-func (e *Evaluator) fallback(in triage.Input, l1 triage.Result, cause error) (triage.Result, error) {
-	safe := redact(fmt.Sprintf("%s provider: %v", e.provider.Name(), cause), e.cfg.APIKey)
+func (e *Evaluator) fallback(l1 triage.Result, cause error) (triage.Result, error) {
+	safe := e.safeError(fmt.Sprintf("%s provider: %v", e.provider.Name(), cause))
 	if e.cfg.FallbackMode == "fail" {
 		return triage.Result{}, errors.New(safe)
 	}
-	e.logger.Warn("ai L2 failed; keeping L1 result",
-		"provider", e.provider.Name(), "external_id", in.ExternalID, "error", safe)
+	e.logger.Warn("ai L3 failed; keeping L1 result",
+		"provider", e.provider.Name(), "error", safe)
 	l1.AITags = []string{"l2-fallback"}
 	return l1, nil
 }
 
+func (e *Evaluator) safeError(s string) string {
+	return redactCredential(redact(s, e.cfg.APIKey), e.cfg.Decision.APIKey)
+}
+
 const promptContentLimit = 2000
 
-func (e *Evaluator) prompts(in triage.Input, l1 triage.Result) (string, string) {
+func (e *Evaluator) l3Prompts(in triage.Input, l1 triage.Result, hint *DecisionOutcome) (string, string) {
 	system := fmt.Sprintf(`你是 news_panel 个人情报面板的信息分拣器。用户关注三大核心情报域：
 - investing：投资/股票突发新闻、财报、宏观催化剂（美联储、CPI、关税、并购等）
 - ai：AI 官方动态、前沿模型发布、内测/灰度泄露、重要开源与算力进展
@@ -128,6 +195,9 @@ func (e *Evaluator) prompts(in triage.Input, l1 triage.Result) (string, string) 
 		in.PublishedAt.UTC().Format(time.RFC3339), in.URL, l1.Domain, l1.Priority)
 	if rt, ok := in.RawMeta["is_retweet"]; ok {
 		fmt.Fprintf(&user, "\n是否转推：%v", rt)
+	}
+	if hint != nil {
+		fmt.Fprintf(&user, "\nL2 门控初判：priority=%s domain=%s", hint.Priority, hint.Domain)
 	}
 	return system, user.String()
 }
