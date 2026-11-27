@@ -28,8 +28,29 @@ type Feed struct {
 
 	FetchState FeedFetchState `json:"fetch_state"`
 
-	UnreadCount int64 `json:"unread_count"`
-	ItemCount   int64 `json:"item_count"`
+	UnreadCount  int64            `json:"unread_count"`
+	ItemCount    int64            `json:"item_count"`
+	TriageCounts FeedTriageCounts `json:"triage_counts"`
+	Progress     *FeedProgress    `json:"progress,omitempty"`
+}
+
+// FeedTriageCounts summarizes persisted AI triage buckets for a feed.
+type FeedTriageCounts struct {
+	Kept     int64 `json:"kept"`
+	Filtered int64 `json:"filtered"`
+	Unscored int64 `json:"unscored"`
+	Pending  int64 `json:"pending"`
+	Failed   int64 `json:"failed"`
+}
+
+// FeedProgress reports active in-flight pull or AI triage progress for a feed.
+type FeedProgress struct {
+	Phase      string `json:"phase"` // "fetching" | "triaging"
+	Total      int    `json:"total"`
+	Processed  int    `json:"processed"`
+	FetchedNew int    `json:"fetched_new"`
+	StartedAt  int64  `json:"started_at,omitempty"`
+	UpdatedAt  int64  `json:"updated_at,omitempty"`
 }
 
 // FeedFetchState stores runtime pull metadata for a feed.
@@ -127,6 +148,7 @@ type AISettings struct {
 	DecisionFallbackMode   *string `json:"decision_fallback_mode,omitempty"`
 	Topics                 *string `json:"topics,omitempty"`
 	RSSMaxItemsPerPull     *int    `json:"rss_max_items_per_pull,omitempty"`
+	RSSPullIntervalSeconds *int    `json:"rss_pull_interval_seconds,omitempty"`
 }
 
 // Apply merges a partial update. An empty key preserves the saved credential.
@@ -172,6 +194,9 @@ func (s AISettings) Apply(p AISettings, clearKey bool) AISettings {
 	}
 	if p.RSSMaxItemsPerPull != nil {
 		s.RSSMaxItemsPerPull = p.RSSMaxItemsPerPull
+	}
+	if p.RSSPullIntervalSeconds != nil {
+		s.RSSPullIntervalSeconds = p.RSSPullIntervalSeconds
 	}
 	if clearKey {
 		s.DecisionAPIKey = nil

@@ -1,6 +1,21 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
+import { Eye, EyeOff } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import {
   APIError,
   aiSettingsAPI,
@@ -15,12 +30,22 @@ const control =
   "min-h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-2 focus-visible:outline-ring";
 const section = "grid gap-4 border-t border-border pt-4";
 
-function Field({ label, children }: { label: string; children: ReactNode }) {
+function Field({
+  label,
+  id,
+  children,
+}: {
+  label: string;
+  id?: string;
+  children: ReactNode;
+}) {
   return (
-    <label className="grid min-w-0 gap-1.5 text-sm font-medium">
-      {label}
+    <div className="grid min-w-0 gap-1.5 text-sm font-medium">
+      <label htmlFor={id} className="text-sm font-medium">
+        {label}
+      </label>
       {children}
-    </label>
+    </div>
   );
 }
 
@@ -29,6 +54,7 @@ export function AISettingsTab() {
   const [settings, setSettings] = useState<AITriageSettings>();
   const [stats, setStats] = useState<AITriageStats>();
   const [draft, setDraft] = useState<AISettingsPatch>({});
+  const [showKey, setShowKey] = useState(false);
   const [operation, setOperation] = useState<"save" | "test" | "reset">();
   const [error, setError] = useState("");
   const [probe, setProbe] = useState<DecisionTestResult>();
@@ -78,13 +104,38 @@ export function AISettingsTab() {
   const preset = settings.presets.find(
     (p) => p.id === values.decision_provider,
   );
+  const providerItems = settings.presets.map((p) => ({
+    value: p.id,
+    label: p.id === "off" ? t("settings.ai.off") : p.label,
+  }));
+  const lowActionItems = (["keep_unscored", "filter"] as const).map((v) => ({
+    value: v,
+    label: t(`settings.ai.${v}`),
+  }));
+  const fallbackItems = (["skip_to_l3", "keep_l1", "fail"] as const).map(
+    (v) => ({
+      value: v,
+      label: t(`settings.ai.${v}`),
+    }),
+  );
+
   const busy = !!operation;
   const dirty = Object.keys(draft).length > 0;
+  const pullIntervalMinutes = Number.isFinite(values.rss_pull_interval_seconds)
+    ? Math.round(values.rss_pull_interval_seconds / 60)
+    : 30;
+  const l3Summary = settings.l3_enabled
+    ? settings.l3_provider === "cli"
+      ? "cli"
+      : [settings.l3_provider, settings.l3_model].filter(Boolean).join(" / ")
+    : t("settings.ai.off");
+
   function change(patch: AISettingsPatch) {
     setDraft((previous) => ({ ...previous, ...patch }));
     setProbe(undefined);
     setError("");
   }
+
   async function act(action: "save" | "test" | "reset") {
     if (action === "reset") {
       if (!window.confirm(t("settings.ai.confirm"))) return;
@@ -101,6 +152,7 @@ export function AISettingsTab() {
         );
         setSettings(result.data);
         setDraft({});
+        setShowKey(false);
         toast.success(t("settings.ai.saved"));
         setStats((await aiSettingsAPI.stats()).data);
       }
@@ -111,9 +163,14 @@ export function AISettingsTab() {
     }
   }
 
+  const maskedStyle: CSSProperties | undefined = showKey
+    ? undefined
+    : ({ WebkitTextSecurity: "disc" } as CSSProperties);
+
   return (
     <form
       ref={form}
+      autoComplete="off"
       className="space-y-5 pr-1"
       onSubmit={(e) => {
         e.preventDefault();
@@ -126,16 +183,11 @@ export function AISettingsTab() {
     >
       <section
         aria-label={t("settings.ai.status")}
-        className="space-y-3 rounded-md bg-muted/50 p-3"
+        className="space-y-3 rounded-xl border border-border/60 bg-muted/40 p-3.5"
       >
         <p className="break-words text-sm font-medium">
           L2 · {stats.l2_enabled ? stats.l2_provider : t("settings.ai.off")}{" "}
-          <span className="mx-1 text-muted-foreground">/</span> L3 ·{" "}
-          {settings.l3_enabled
-            ? [settings.l3_provider, settings.l3_model]
-                .filter(Boolean)
-                .join(" / ")
-            : t("settings.ai.off")}
+          <span className="mx-1 text-muted-foreground">/</span> L3 · {l3Summary}
         </p>
         <dl className="grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
           {(
@@ -155,44 +207,64 @@ export function AISettingsTab() {
           ))}
         </dl>
       </section>
+
       <fieldset disabled={busy} className="grid min-w-0 gap-4">
-        <label className="flex min-h-10 items-center gap-2 text-sm font-medium">
-          <input
-            type="checkbox"
+        <div className="flex min-h-10 items-center justify-between gap-3">
+          <label
+            htmlFor="ai-decision-enabled"
+            className="text-sm font-medium"
+          >
+            {t("settings.ai.enabled")}
+          </label>
+          <Switch
+            id="ai-decision-enabled"
             checked={
               values.decision_provider !== "off" &&
               (draft.decision_enabled ?? settings.decision_requested)
             }
-            disabled={values.decision_provider === "off"}
-            onChange={(e) => change({ decision_enabled: e.target.checked })}
+            disabled={values.decision_provider === "off" || busy}
+            onCheckedChange={(checked) => change({ decision_enabled: checked })}
           />
-          {t("settings.ai.enabled")}
-        </label>
+        </div>
+
         <Field label={t("settings.ai.provider")}>
-          <select
-            className={control}
+          <Select
+            items={providerItems}
             value={values.decision_provider}
-            onChange={(e) =>
+            onValueChange={(value) => {
+              if (!value) return;
               change({
-                decision_provider: e.target.value,
+                decision_provider: value,
                 decision_base_url: "",
                 decision_model: "",
-              })
-            }
+              });
+            }}
           >
-            {settings.presets.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.id === "off" ? t("settings.ai.off") : p.label}
-              </option>
-            ))}
-          </select>
+            <SelectTrigger className="h-10 w-full border-input bg-background">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {providerItems.map((item) => (
+                <SelectItem key={item.value} value={item.value}>
+                  {item.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </Field>
+
         {preset?.requires_account_id && (
-          <Field label={t("settings.ai.account")}>
+          <Field label={t("settings.ai.account")} id="ai-decision-account-id">
             <input
+              id="ai-decision-account-id"
+              name="ai_decision_account_id"
               className={control}
               value={values.decision_account_id}
               pattern="[A-Za-z0-9_\-]{1,64}"
+              autoComplete="off"
+              autoCorrect="off"
+              autoCapitalize="none"
+              spellCheck={false}
               onChange={(e) => change({ decision_account_id: e.target.value })}
             />
             <span className="text-xs font-normal text-muted-foreground">
@@ -200,27 +272,56 @@ export function AISettingsTab() {
             </span>
           </Field>
         )}
+
         {values.decision_provider !== "off" && (
           <>
-            <Field label={t("settings.ai.key")}>
-              <input
-                type="password"
-                autoComplete="off"
-                className={control}
-                value={draft.decision_api_key ?? ""}
-                placeholder={t("settings.ai.keep")}
-                onChange={(e) =>
-                  change({
-                    decision_api_key: e.target.value,
-                    clear_decision_api_key: false,
-                  })
-                }
-              />
+            <Field label={t("settings.ai.key")} id="ai-decision-token-field">
+              <div className="relative">
+                <input
+                  id="ai-decision-token-field"
+                  name="ai_decision_token_field"
+                  type="text"
+                  autoComplete="off"
+                  autoCorrect="off"
+                  autoCapitalize="none"
+                  spellCheck={false}
+                  data-1p-ignore="true"
+                  data-lpignore="true"
+                  data-bwignore="true"
+                  data-form-type="other"
+                  style={maskedStyle}
+                  className={`${control} pr-10 font-mono`}
+                  value={draft.decision_api_key ?? ""}
+                  placeholder={t("settings.ai.keep")}
+                  onChange={(e) =>
+                    change({
+                      decision_api_key: e.target.value,
+                      clear_decision_api_key: false,
+                    })
+                  }
+                />
+                <button
+                  type="button"
+                  aria-pressed={showKey}
+                  aria-label={t(
+                    showKey ? "settings.ai.hideKey" : "settings.ai.showKey",
+                  )}
+                  onClick={() => setShowKey((prev) => !prev)}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                >
+                  {showKey ? (
+                    <EyeOff className="h-4 w-4" />
+                  ) : (
+                    <Eye className="h-4 w-4" />
+                  )}
+                </button>
+              </div>
               <span className="text-xs font-normal text-muted-foreground">
                 {t(`settings.ai.${settings.decision_api_key_source}`)}{" "}
                 {settings.decision_api_key_masked}
               </span>
             </Field>
+
             {settings.decision_api_key_source === "db" && (
               <label className="flex items-center gap-2 text-sm">
                 <input
@@ -236,17 +337,24 @@ export function AISettingsTab() {
                 {t("settings.ai.clear")}
               </label>
             )}
+
             <details
               ref={advanced}
-              className="rounded-md border border-border p-3"
+              className="rounded-xl border border-border/70 p-3.5"
             >
               <summary className="cursor-pointer text-sm font-medium">
                 {t("settings.ai.advanced")}
               </summary>
               <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                <Field label={t("settings.ai.base")}>
+                <Field label={t("settings.ai.base")} id="ai-decision-base-url">
                   <input
+                    id="ai-decision-base-url"
+                    name="ai_decision_base_url"
                     type="url"
+                    autoComplete="off"
+                    autoCorrect="off"
+                    autoCapitalize="none"
+                    spellCheck={false}
                     className={control}
                     value={values.decision_base_url}
                     placeholder={preset?.default_base_url}
@@ -255,8 +363,14 @@ export function AISettingsTab() {
                     }
                   />
                 </Field>
-                <Field label={t("settings.ai.model")}>
+                <Field label={t("settings.ai.model")} id="ai-decision-model">
                   <input
+                    id="ai-decision-model"
+                    name="ai_decision_model"
+                    autoComplete="off"
+                    autoCorrect="off"
+                    autoCapitalize="none"
+                    spellCheck={false}
                     className={control}
                     value={values.decision_model}
                     placeholder={preset?.default_model}
@@ -264,8 +378,17 @@ export function AISettingsTab() {
                   />
                 </Field>
                 {values.decision_provider === "http_json" && (
-                  <Field label={t("settings.ai.header")}>
+                  <Field
+                    label={t("settings.ai.header")}
+                    id="ai-decision-auth-header"
+                  >
                     <input
+                      id="ai-decision-auth-header"
+                      name="ai_decision_auth_header"
+                      autoComplete="off"
+                      autoCorrect="off"
+                      autoCapitalize="none"
+                      spellCheck={false}
                       className={control}
                       value={values.decision_auth_header}
                       onChange={(e) =>
@@ -275,19 +398,29 @@ export function AISettingsTab() {
                   </Field>
                 )}
                 {values.decision_provider === "openai" && (
-                  <label className="flex items-center gap-2 text-sm">
-                    <input
-                      type="checkbox"
+                  <div className="flex items-center justify-between gap-2 sm:col-span-2">
+                    <label
+                      htmlFor="ai-decision-json-format"
+                      className="text-sm font-medium"
+                    >
+                      {t("settings.ai.json")}
+                    </label>
+                    <Switch
+                      id="ai-decision-json-format"
                       checked={values.decision_json_format}
-                      onChange={(e) =>
-                        change({ decision_json_format: e.target.checked })
+                      onCheckedChange={(checked) =>
+                        change({ decision_json_format: checked })
                       }
                     />
-                    {t("settings.ai.json")}
-                  </label>
+                  </div>
                 )}
-                <Field label={t("settings.ai.timeout")}>
+                <Field
+                  label={t("settings.ai.timeout")}
+                  id="ai-decision-timeout"
+                >
                   <input
+                    id="ai-decision-timeout"
+                    name="ai_decision_timeout"
                     type="number"
                     min="1"
                     max="60"
@@ -305,9 +438,16 @@ export function AISettingsTab() {
                     }
                   />
                 </Field>
-                <Field label={t("settings.ai.priorities")}>
+                <Field
+                  label={t("settings.ai.priorities")}
+                  id="ai-decision-priorities"
+                >
                   <input
+                    id="ai-decision-priorities"
+                    name="ai_decision_priorities"
                     required
+                    autoComplete="off"
+                    spellCheck={false}
                     className={control}
                     value={values.decision_l3_priorities}
                     placeholder="critical,high,normal"
@@ -317,37 +457,48 @@ export function AISettingsTab() {
                   />
                 </Field>
                 <Field label={t("settings.ai.low")}>
-                  <select
-                    className={control}
+                  <Select
+                    items={lowActionItems}
                     value={values.decision_low_action}
-                    onChange={(e) =>
-                      change({ decision_low_action: e.target.value })
-                    }
+                    onValueChange={(value) => {
+                      if (value) change({ decision_low_action: value });
+                    }}
                   >
-                    {(["keep_unscored", "filter"] as const).map((v) => (
-                      <option key={v} value={v}>
-                        {t(`settings.ai.${v}`)}
-                      </option>
-                    ))}
-                  </select>
+                    <SelectTrigger className="h-10 w-full border-input bg-background">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {lowActionItems.map((item) => (
+                        <SelectItem key={item.value} value={item.value}>
+                          {item.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </Field>
                 <Field label={t("settings.ai.fallback")}>
-                  <select
-                    className={control}
+                  <Select
+                    items={fallbackItems}
                     value={values.decision_fallback_mode}
-                    onChange={(e) =>
-                      change({ decision_fallback_mode: e.target.value })
-                    }
+                    onValueChange={(value) => {
+                      if (value) change({ decision_fallback_mode: value });
+                    }}
                   >
-                    {(["skip_to_l3", "keep_l1", "fail"] as const).map((v) => (
-                      <option key={v} value={v}>
-                        {t(`settings.ai.${v}`)}
-                      </option>
-                    ))}
-                  </select>
+                    <SelectTrigger className="h-10 w-full border-input bg-background">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {fallbackItems.map((item) => (
+                        <SelectItem key={item.value} value={item.value}>
+                          {item.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </Field>
               </div>
             </details>
+
             <div className="space-y-2">
               <Button
                 type="button"
@@ -377,39 +528,79 @@ export function AISettingsTab() {
             </div>
           </>
         )}
+
         <section className={section}>
           <h3 className="text-sm font-semibold">{t("settings.ai.budget")}</h3>
-          <Field label={t("settings.ai.topics")}>
+          <Field label={t("settings.ai.topics")} id="ai-topics-input">
             <textarea
+              id="ai-topics-input"
+              name="ai_topics"
               rows={3}
               className={control}
               value={values.topics}
               onChange={(e) => change({ topics: e.target.value })}
             />
           </Field>
-          <Field label={t("settings.ai.limit")}>
-            <input
-              type="number"
-              min="0"
-              max="500"
-              required
-              className={control}
-              value={
-                Number.isFinite(values.rss_max_items_per_pull)
-                  ? values.rss_max_items_per_pull
-                  : ""
-              }
-              onChange={(e) =>
-                change({ rss_max_items_per_pull: e.target.valueAsNumber })
-              }
-            />
-          </Field>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label={t("settings.ai.limit")} id="ai-rss-limit-input">
+              <input
+                id="ai-rss-limit-input"
+                name="ai_rss_limit"
+                type="number"
+                min="0"
+                max="500"
+                required
+                className={control}
+                value={
+                  Number.isFinite(values.rss_max_items_per_pull)
+                    ? values.rss_max_items_per_pull
+                    : ""
+                }
+                onChange={(e) =>
+                  change({ rss_max_items_per_pull: e.target.valueAsNumber })
+                }
+              />
+            </Field>
+            <Field
+              label={t("settings.ai.pullInterval")}
+              id="ai-rss-interval-input"
+            >
+              <input
+                id="ai-rss-interval-input"
+                name="ai_rss_interval_minutes"
+                type="number"
+                min="5"
+                max="1440"
+                required
+                className={control}
+                value={
+                  Number.isFinite(pullIntervalMinutes)
+                    ? pullIntervalMinutes
+                    : ""
+                }
+                onChange={(e) =>
+                  change({
+                    rss_pull_interval_seconds: Number.isFinite(
+                      e.target.valueAsNumber,
+                    )
+                      ? Math.round(e.target.valueAsNumber * 60)
+                      : Number.NaN,
+                  })
+                }
+              />
+              <span className="text-xs font-normal text-muted-foreground">
+                {t("settings.ai.pullIntervalHint")}
+              </span>
+            </Field>
+          </div>
         </section>
+
         {error && (
           <p role="alert" className="text-sm text-destructive">
             {error}
           </p>
         )}
+
         <div className="flex flex-wrap gap-2 border-t border-border pt-4">
           <Button type="submit" disabled={!dirty}>
             {t(

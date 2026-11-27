@@ -132,6 +132,14 @@ func RSSMaxItemsPerPull() int {
 	return n
 }
 
+func rssPullIntervalFromEnv() int {
+	n, err := strconv.Atoi(envDefault("FUSION_PULL_INTERVAL", "1800"))
+	if err != nil || n < 300 || n > 86400 {
+		return 1800
+	}
+	return n
+}
+
 type decisionDialect int
 
 const (

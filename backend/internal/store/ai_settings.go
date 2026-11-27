@@ -39,7 +39,8 @@ const aiColumns = `decision_enabled,
  decision_low_action,
  decision_fallback_mode,
  topics,
- rss_max_items_per_pull`
+ rss_max_items_per_pull,
+ rss_pull_interval_seconds`
 
 func (s *Store) GetAISettings() (model.AISettings, error) {
 	var row model.AISettings
@@ -58,6 +59,7 @@ func (s *Store) GetAISettings() (model.AISettings, error) {
 		&row.DecisionFallbackMode,
 		&row.Topics,
 		&row.RSSMaxItemsPerPull,
+		&row.RSSPullIntervalSeconds,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return model.AISettings{}, nil
@@ -73,7 +75,7 @@ func (s *Store) UpdateAISettings(p model.AISettings, clearKey bool) error {
 	if p.DecisionAPIKey != nil && *p.DecisionAPIKey == "" {
 		p.DecisionAPIKey = nil
 	}
-	_, err := s.db.Exec("INSERT INTO ai_settings (id,"+aiColumns+`) VALUES (1,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+	_, err := s.db.Exec("INSERT INTO ai_settings (id,"+aiColumns+`) VALUES (1,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
  ON CONFLICT(id) DO UPDATE SET
  decision_enabled=COALESCE(excluded.decision_enabled,decision_enabled),
  decision_provider=COALESCE(excluded.decision_provider,decision_provider),
@@ -89,6 +91,7 @@ func (s *Store) UpdateAISettings(p model.AISettings, clearKey bool) error {
  decision_fallback_mode=COALESCE(excluded.decision_fallback_mode,decision_fallback_mode),
  topics=COALESCE(excluded.topics,topics),
  rss_max_items_per_pull=COALESCE(excluded.rss_max_items_per_pull,rss_max_items_per_pull),
+ rss_pull_interval_seconds=COALESCE(excluded.rss_pull_interval_seconds,rss_pull_interval_seconds),
  updated_at=unixepoch()`,
 		p.DecisionEnabled,
 		p.DecisionProvider,
@@ -104,6 +107,7 @@ func (s *Store) UpdateAISettings(p model.AISettings, clearKey bool) error {
 		p.DecisionFallbackMode,
 		p.Topics,
 		p.RSSMaxItemsPerPull,
+		p.RSSPullIntervalSeconds,
 		clearKey)
 	return err
 }

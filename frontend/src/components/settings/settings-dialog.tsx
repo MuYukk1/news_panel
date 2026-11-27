@@ -466,7 +466,7 @@ export function SettingsDialog() {
             {tabTitles[activeTab]}
           </h2>
 
-          <div className="flex-1 overflow-y-auto">
+          <div className="np-scroller flex-1 overflow-y-auto pr-1">
             {activeTab === "general" && <GeneralContent />}
             {activeTab === "about" && <AboutContent />}
             {activeTab === "ai" && <AISettingsTab />}

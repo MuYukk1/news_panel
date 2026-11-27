@@ -530,3 +530,67 @@ func TestRefreshFeedFetchTimeoutStillCancelsSlowHTTP(t *testing.T) {
 		t.Fatalf("expected recorded fetch timeout failure, got %+v", updated.FetchState)
 	}
 }
+
+func TestBackfillFeedTriageAndProgressSnapshot(t *testing.T) {
+	st, err := store.New(filepath.Join(t.TempDir(), "backfill.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+
+	feed, err := st.CreateFeed(1, "RSS", "https://example.test/rss.xml", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.BatchCreateItemsIgnore(feed.ID, []store.BatchCreateItemInput{
+		{GUID: "g1", Title: "Old", Link: "https://example.test/1", Content: "body", PubDate: 100},
+		{GUID: "g2", Title: "Mid", Link: "https://example.test/2", Content: "body", PubDate: 200},
+		{GUID: "g3", Title: "New", Link: "https://example.test/3", Content: "body", PubDate: 300},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	enabled := true
+	if err := st.UpdateFeed(feed.ID, store.UpdateFeedParams{AIEnabled: &enabled}); err != nil {
+		t.Fatal(err)
+	}
+
+	p := New(st, &config.Config{PullInterval: 1800, PullTimeout: 5, PullConcurrency: 1, PullMaxBackoff: 604800, AllowPrivateFeeds: true})
+	p.SetRSSLimit(2)
+	p.SetInterval(10 * time.Minute)
+	if p.Interval() != 10*time.Minute {
+		t.Fatalf("expected 10m interval, got %v", p.Interval())
+	}
+
+	var observedPhase string
+	var observedTotal int
+	p.SetEvaluator(rssEvalFunc(func(ctx context.Context, in triage.Input) (triage.Result, error) {
+		if snap := p.ProgressSnapshot(); len(snap) > 0 {
+			if pr, ok := snap[feed.ID]; ok {
+				observedPhase = pr.Phase
+				observedTotal = pr.Total
+			}
+		}
+		score := 75
+		return triage.Result{Domain: "ai", Priority: "high", TriageStatus: "kept", AIScore: &score}, nil
+	}))
+
+	processed, err := p.BackfillFeedTriage(context.Background(), feed.ID)
+	if err != nil || processed != 2 {
+		t.Fatalf("expected 2 backfilled items, got processed=%d err=%v", processed, err)
+	}
+	if observedPhase != "triaging" || observedTotal != 2 {
+		t.Fatalf("expected active triaging progress (total=2), got phase=%q total=%d", observedPhase, observedTotal)
+	}
+	if snap := p.ProgressSnapshot(); len(snap) != 0 {
+		t.Fatalf("expected cleared progress after completion, got %+v", snap)
+	}
+
+	feeds, err := st.ListFeeds()
+	if err != nil || len(feeds) != 1 {
+		t.Fatalf("list feeds: %v (%d)", err, len(feeds))
+	}
+	tc := feeds[0].TriageCounts
+	if tc.Kept != 2 || tc.Unscored != 1 || tc.Pending != 0 || tc.Failed != 0 {
+		t.Fatalf("unexpected triage counts: %+v", tc)
+	}
+}

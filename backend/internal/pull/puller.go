@@ -26,10 +26,13 @@ type Puller struct {
 	store       *store.Store
 	config      *config.Config
 	logger      *slog.Logger
-	interval    time.Duration
+	interval    atomic.Int64
+	intervalCh  chan struct{}
 	timeout     time.Duration
 	maxBackoff  time.Duration
 	concurrency *semaphore.Weighted
+	progressMu  sync.RWMutex
+	progress    map[int64]model.FeedProgress
 }
 
 func New(st *store.Store, cfg *config.Config) *Puller {
@@ -37,13 +40,73 @@ func New(st *store.Store, cfg *config.Config) *Puller {
 		store:       st,
 		config:      cfg,
 		logger:      slog.Default(),
-		interval:    time.Duration(cfg.PullInterval) * time.Second,
+		intervalCh:  make(chan struct{}, 1),
 		timeout:     time.Duration(cfg.PullTimeout) * time.Second,
 		maxBackoff:  time.Duration(cfg.PullMaxBackoff) * time.Second,
 		concurrency: semaphore.NewWeighted(int64(cfg.PullConcurrency)),
+		progress:    make(map[int64]model.FeedProgress),
 	}
+	interval := time.Duration(cfg.PullInterval) * time.Second
+	if interval <= 0 {
+		interval = 30 * time.Minute
+	}
+	p.interval.Store(int64(interval))
 	p.SetRSSLimit(ai.RSSMaxItemsPerPull())
 	return p
+}
+
+func (p *Puller) Interval() time.Duration {
+	if d := time.Duration(p.interval.Load()); d > 0 {
+		return d
+	}
+	return 30 * time.Minute
+}
+
+func (p *Puller) SetInterval(d time.Duration) {
+	if d <= 0 {
+		return
+	}
+	p.interval.Store(int64(d))
+	if p.intervalCh != nil {
+		select {
+		case p.intervalCh <- struct{}{}:
+		default:
+		}
+	}
+}
+
+func (p *Puller) setProgress(feedID int64, pr model.FeedProgress) {
+	now := time.Now().Unix()
+	if pr.StartedAt == 0 {
+		pr.StartedAt = now
+	}
+	pr.UpdatedAt = now
+	p.progressMu.Lock()
+	if p.progress == nil {
+		p.progress = make(map[int64]model.FeedProgress)
+	}
+	p.progress[feedID] = pr
+	p.progressMu.Unlock()
+}
+
+func (p *Puller) clearProgress(feedID int64) {
+	p.progressMu.Lock()
+	delete(p.progress, feedID)
+	p.progressMu.Unlock()
+}
+
+// ProgressSnapshot returns active in-flight pull/triage progress keyed by feed ID.
+func (p *Puller) ProgressSnapshot() map[int64]model.FeedProgress {
+	p.progressMu.RLock()
+	defer p.progressMu.RUnlock()
+	if len(p.progress) == 0 {
+		return nil
+	}
+	out := make(map[int64]model.FeedProgress, len(p.progress))
+	for k, v := range p.progress {
+		out[k] = v
+	}
+	return out
 }
 
 func (p *Puller) SetRSSLimit(n int) { p.rssLimit.Store(int64(n)) }
@@ -54,12 +117,12 @@ func (p *Puller) SetEvaluator(eval triage.TriageEvaluator) { p.evaluator = eval 
 
 // Start begins periodic feed pulling. Blocks until context is cancelled.
 func (p *Puller) Start(ctx context.Context) error {
-	p.logger.Info("pull service started", "interval", p.interval, "timeout", p.timeout, "concurrency", p.config.PullConcurrency)
+	p.logger.Info("pull service started", "interval", p.Interval(), "timeout", p.timeout, "concurrency", p.config.PullConcurrency)
 
 	// Run immediately on startup
 	p.pullAll(ctx)
 
-	ticker := time.NewTicker(p.interval)
+	ticker := time.NewTicker(p.Interval())
 	defer ticker.Stop()
 
 	for {
@@ -67,6 +130,10 @@ func (p *Puller) Start(ctx context.Context) error {
 		case <-ctx.Done():
 			p.logger.Info("pull service stopping")
 			return ctx.Err()
+		case <-p.intervalCh:
+			next := p.Interval()
+			ticker.Reset(next)
+			p.logger.Info("pull interval updated", "interval", next)
 		case <-ticker.C:
 			p.pullAll(ctx)
 		}
@@ -100,13 +167,16 @@ func (p *Puller) pullAll(ctx context.Context) {
 			LastErrorAt:         feed.FetchState.LastErrorAt,
 			LastCheckedAt:       feed.FetchState.LastCheckedAt,
 		}
-		return !pullpolicy.ShouldSkip(now, state, p.interval, p.maxBackoff)
+		return !pullpolicy.ShouldSkip(now, state, p.Interval(), p.maxBackoff)
 	})
 }
 
 // pullFeed fetches single feed and saves new items.
 func (p *Puller) pullFeed(ctx context.Context, feed *model.Feed) {
 	p.logger.Debug("pulling feed", "feed_id", feed.ID, "feed_name", feed.Name)
+	startedAt := time.Now().Unix()
+	p.setProgress(feed.ID, model.FeedProgress{Phase: "fetching", StartedAt: startedAt})
+	defer p.clearProgress(feed.ID)
 
 	fetchCtx := ctx
 	var cancelFetch context.CancelFunc
@@ -131,7 +201,7 @@ func (p *Puller) pullFeed(ctx context.Context, feed *model.Feed) {
 			HTTPStatus:      httpStatus,
 			LastError:       err.Error(),
 			RetryAfterUntil: retryAfterUntil,
-			IntervalSeconds: int64(p.interval.Seconds()),
+			IntervalSeconds: int64(p.Interval().Seconds()),
 			MaxBackoff:      int64(p.maxBackoff.Seconds()),
 		}); err != nil {
 			p.logger.Error("failed to record failure", "feed_id", feed.ID, "error", err)
@@ -166,7 +236,7 @@ func (p *Puller) pullFeed(ctx context.Context, feed *model.Feed) {
 
 		nextCheckAt := pullpolicy.ComputeNextCheckAt(
 			checkedAt,
-			p.interval,
+			p.Interval(),
 			p.maxBackoff,
 			0,
 			result.RetryAfterUntil,
@@ -194,7 +264,7 @@ func (p *Puller) pullFeed(ctx context.Context, feed *model.Feed) {
 
 	nextCheckAt := pullpolicy.ComputeNextCheckAt(
 		checkedAt,
-		p.interval,
+		p.Interval(),
 		p.maxBackoff,
 		0,
 		result.RetryAfterUntil,
@@ -213,7 +283,7 @@ func (p *Puller) pullFeed(ctx context.Context, feed *model.Feed) {
 		})
 	}
 
-	newCount, err := p.saveItems(ctx, feed, inputs)
+	newCount, pending, err := p.commitFetchedItems(feed, inputs)
 	if err != nil {
 		p.logger.Error("failed to save feed items", "feed_id", feed.ID, "error", err)
 		return
@@ -245,20 +315,35 @@ func (p *Puller) pullFeed(ctx context.Context, feed *model.Feed) {
 		}
 	}
 
+	if len(pending) > 0 {
+		if err := p.evaluatePendingItems(ctx, feed, pending, newCount, startedAt); err != nil {
+			p.logger.Error("failed to finalize feed triage", "feed_id", feed.ID, "error", err)
+		}
+	}
+
 	p.logger.Info("feed pulled successfully", "feed_id", feed.ID, "feed_name", feed.Name, "new_items", newCount)
 }
 
-func (p *Puller) saveItems(ctx context.Context, feed *model.Feed, inputs []store.BatchCreateItemInput) (int, error) {
+func (p *Puller) commitFetchedItems(feed *model.Feed, inputs []store.BatchCreateItemInput) (int, []store.CreatedItem, error) {
 	if !feed.AIEnabled || p.evaluator == nil {
-		return p.store.BatchCreateItemsIgnore(feed.ID, inputs)
+		n, err := p.store.BatchCreateItemsIgnore(feed.ID, inputs)
+		return n, nil, err
 	}
 	sort.SliceStable(inputs, func(i, j int) bool { return inputs[i].PubDate > inputs[j].PubDate })
-	count, pending, err := p.store.BatchCreateItemsWithTriageLimit(feed.ID, inputs, p.RSSLimit())
-	if err != nil {
-		return 0, err
-	}
+	return p.store.BatchCreateItemsWithTriageLimit(feed.ID, inputs, p.RSSLimit())
+}
+
+func (p *Puller) evaluatePendingItems(ctx context.Context, feed *model.Feed, pending []store.CreatedItem, fetchedNew int, startedAt int64) error {
+	total := len(pending)
+	p.setProgress(feed.ID, model.FeedProgress{
+		Phase:      "triaging",
+		Total:      total,
+		Processed:  0,
+		FetchedNew: fetchedNew,
+		StartedAt:  startedAt,
+	})
 	var firstSaveErr error
-	for _, item := range pending {
+	for idx, item := range pending {
 		input := triage.Input{SourceID: strconv.FormatInt(feed.ID, 10), SourceType: "rss", ExternalID: item.GUID,
 			URL: item.Link, Title: item.Title, Content: item.Content, Author: feed.Name, PublishedAt: time.Unix(item.PubDate, 0).UTC()}
 		var result triage.Result
@@ -283,8 +368,45 @@ func (p *Puller) saveItems(ctx context.Context, feed *model.Feed, inputs []store
 			}
 			p.logger.Error("failed to save RSS triage", "feed_id", feed.ID, "item_id", item.ID, "error", err)
 		}
+		p.setProgress(feed.ID, model.FeedProgress{
+			Phase:      "triaging",
+			Total:      total,
+			Processed:  idx + 1,
+			FetchedNew: fetchedNew,
+			StartedAt:  startedAt,
+		})
 	}
-	return count, firstSaveErr
+	return firstSaveErr
+}
+
+// BackfillFeedTriage evaluates up to RSSLimit() newest unscored items for an AI-enabled RSS feed.
+func (p *Puller) BackfillFeedTriage(ctx context.Context, feedID int64) (int, error) {
+	if p.evaluator == nil {
+		return 0, nil
+	}
+	feed, err := p.store.GetFeed(feedID)
+	if err != nil {
+		return 0, fmt.Errorf("get feed: %w", err)
+	}
+	if isPluginShadowFeed(feed.Link) || !feed.AIEnabled {
+		return 0, nil
+	}
+	if err := p.concurrency.Acquire(ctx, 1); err != nil {
+		return 0, err
+	}
+	defer p.concurrency.Release(1)
+
+	startedAt := time.Now().Unix()
+	pending, err := p.store.ClaimUnscoredItemsForTriage(feedID, p.RSSLimit())
+	if err != nil || len(pending) == 0 {
+		return 0, err
+	}
+	defer p.clearProgress(feedID)
+	if err := p.evaluatePendingItems(ctx, feed, pending, 0, startedAt); err != nil {
+		return len(pending), err
+	}
+	p.logger.Info("feed unscored backfill finished", "feed_id", feed.ID, "feed_name", feed.Name, "processed", len(pending))
+	return len(pending), nil
 }
 
 // RefreshAll triggers refresh for all non-suspended feeds and waits until all

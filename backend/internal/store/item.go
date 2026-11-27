@@ -212,6 +212,63 @@ func (s *Store) batchCreateRSS(feedID int64, inputs []BatchCreateItemInput, pend
 	return created, pending, nil
 }
 
+// ClaimUnscoredItemsForTriage claims up to limit newest unscored items for a feed
+// and marks them pending in one transaction so a backfill run can evaluate them.
+func (s *Store) ClaimUnscoredItemsForTriage(feedID int64, limit int) ([]CreatedItem, error) {
+	if limit <= 0 || limit > 500 {
+		limit = 500
+	}
+	tx, err := s.db.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
+	rows, err := tx.Query(`
+		SELECT id, guid, title, link, content, pub_date
+		FROM items
+		WHERE feed_id = ? AND triage_status = 'kept' AND ai_score IS NULL
+		ORDER BY pub_date DESC, id DESC
+		LIMIT ?
+	`, feedID, limit)
+	if err != nil {
+		return nil, err
+	}
+	var claimed []CreatedItem
+	for rows.Next() {
+		var item CreatedItem
+		if err := rows.Scan(&item.ID, &item.GUID, &item.Title, &item.Link, &item.Content, &item.PubDate); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		claimed = append(claimed, item)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return nil, err
+	}
+	rows.Close()
+
+	if len(claimed) == 0 {
+		return nil, nil
+	}
+
+	upd, err := tx.Prepare(`UPDATE items SET triage_status = 'pending' WHERE id = ?`)
+	if err != nil {
+		return nil, err
+	}
+	defer upd.Close()
+	for _, item := range claimed {
+		if _, err := upd.Exec(item.ID); err != nil {
+			return nil, err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return claimed, nil
+}
+
 func (s *Store) UpdateItemUnread(id int64, unread bool) error {
 	result, err := s.db.Exec(`UPDATE items SET unread = :unread WHERE id = :id`,
 		sql.Named("unread", boolToInt(unread)), sql.Named("id", id))

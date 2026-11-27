@@ -155,6 +155,7 @@ func (h *Handler) SetupRouter() *gin.Engine {
 			auth.DELETE("/feeds/:id", h.deleteFeed)
 			auth.POST("/feeds/validate", h.validateFeed)
 			auth.POST("/feeds/:id/refresh", h.refreshFeed)
+			auth.POST("/feeds/:id/triage-unscored", h.triageUnscoredFeed)
 
 			auth.GET("/items", h.listItems)
 			auth.GET("/v1/items", h.listItems)

@@ -54,6 +54,9 @@ func run() error {
 	effective := eval.EnvConfig().Merged(settings)
 	eval.Reload(effective)
 	puller.SetRSSLimit(effective.RSSLimit)
+	if effective.RSSPullIntervalSeconds > 0 {
+		puller.SetInterval(time.Duration(effective.RSSPullIntervalSeconds) * time.Second)
+	}
 	puller.SetEvaluator(eval)
 	h, err := handler.New(st, cfg, puller, eval)
 	if err != nil {

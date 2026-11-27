@@ -29,6 +29,8 @@
   --glass-sub: #575f85;
   --glass-faint: #7c85ab;
   --glass-acc: #5456e6;
+  --scrollbar-thumb: rgba(84, 86, 230, 0.34);
+  --scrollbar-track: rgba(70, 80, 160, 0.06);
   --status-ok: #1c9e6a;
   --prio-critical: #e5484d;
   --prio-high: #e27a14;
@@ -95,6 +97,8 @@
   --glass-sub: #a4aad2;
   --glass-faint: #7077a3;
   --glass-acc: #9496ff;
+  --scrollbar-thumb: rgba(148, 150, 255, 0.42);
+  --scrollbar-track: rgba(255, 255, 255, 0.05);
   --status-ok: #47d79b;
   --prio-critical: #ff7479;
   --prio-high: #ffa24d;
@@ -212,4 +216,100 @@
   --typeset-size: 15px;
   --typeset-leading: 1.75;
   --typeset-flow: 1.25em;
+}
+
+/* Liquid-glass thin scrollbar (standard scrollbar-color + scrollbar-width with legacy fallback) */
+.np-scroller {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
+
+@supports not (scrollbar-color: auto) {
+  .np-scroller {
+    scrollbar-width: auto;
+  }
+
+  .np-scroller::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  .np-scroller::-webkit-scrollbar-thumb {
+    background: var(--scrollbar-thumb);
+    border-radius: 9999px;
+  }
+
+  .np-scroller::-webkit-scrollbar-track {
+    background: var(--scrollbar-track);
+    border-radius: 9999px;
+  }
+}
+
+/* Native <progress> styled for determinate and indeterminate source triage runs */
+progress.np-progress {
+  appearance: none;
+  border: 0 solid;
+  overflow: clip;
+  display: block;
+  width: 100%;
+  height: 0.4375rem;
+  container-type: inline-size;
+  --progress-bar-radius: 1e5px;
+  --progress-bar-track: var(--glass-bar);
+  --progress-bar-fill: var(--glass-acc);
+  --progress-bar-indeterminate-size: 32%;
+  --progress-bar-indeterminate-animation-duration: 1.4s;
+  border-radius: var(--progress-bar-radius);
+  background: var(--progress-bar-track);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  progress.np-progress {
+    --progress-bar-indeterminate-animation-duration: 10s;
+  }
+}
+
+progress.np-progress:dir(rtl) {
+  --progress-bar-indeterminate-animation: np-progress-indeterminate
+    var(--progress-bar-indeterminate-animation-duration) infinite linear reverse;
+}
+
+progress.np-progress:indeterminate {
+  --progress-bar-animation: var(
+    --progress-bar-indeterminate-animation,
+    np-progress-indeterminate
+      var(--progress-bar-indeterminate-animation-duration) infinite linear
+  );
+}
+
+progress.np-progress::-webkit-progress-bar {
+  background: transparent;
+}
+
+progress.np-progress::-webkit-progress-value {
+  background: var(--progress-bar-fill);
+  border-radius: var(--progress-bar-radius);
+  transition: inline-size 0.3s;
+  animation: var(--progress-bar-animation, revert-rule);
+}
+
+progress.np-progress::-moz-progress-bar {
+  background: var(--progress-bar-fill);
+  border-radius: var(--progress-bar-radius);
+  transition: inline-size 0.3s;
+  animation: var(--progress-bar-animation, revert-rule);
+}
+
+@keyframes np-progress-indeterminate {
+  from,
+  to {
+    inline-size: var(--progress-bar-indeterminate-size);
+    margin-right: auto;
+  }
+  from {
+    translate: -100%;
+  }
+  to {
+    translate: 100cqi;
+  }
 }

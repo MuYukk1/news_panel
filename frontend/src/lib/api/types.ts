@@ -6,6 +6,23 @@ export interface Group {
   updated_at: number;
 }
 
+export interface FeedTriageCounts {
+  kept: number;
+  filtered: number;
+  unscored: number;
+  pending: number;
+  failed: number;
+}
+
+export interface FeedProgress {
+  phase: "fetching" | "triaging";
+  total: number;
+  processed: number;
+  fetched_new: number;
+  started_at?: number;
+  updated_at?: number;
+}
+
 export interface Feed {
   id: number;
   group_id: number;
@@ -20,6 +37,8 @@ export interface Feed {
   fetch_state: FeedFetchState;
   unread_count: number;
   item_count: number;
+  triage_counts?: FeedTriageCounts;
+  progress?: FeedProgress;
 }
 
 export interface FeedFetchState {
@@ -133,6 +152,7 @@ export interface CreateFeedRequest {
   link: string;
   site_url?: string;
   proxy?: string;
+  ai_enabled?: boolean;
 }
 
 export interface UpdateFeedRequest {
@@ -279,6 +299,7 @@ export interface AITriageConfig {
   decision_fallback_mode: string;
   topics: string;
   rss_max_items_per_pull: number;
+  rss_pull_interval_seconds: number;
 }
 
 export interface DecisionPreset {

@@ -19,7 +19,12 @@ func (s *Store) ListFeeds() ([]*model.Feed, error) {
 		       COALESCE(fs.last_http_status, 0), COALESCE(fs.retry_after_until, 0), COALESCE(fs.last_success_at, 0),
 		       COALESCE(fs.last_error_at, 0), COALESCE(fs.last_error, ''), COALESCE(fs.consecutive_failures, 0),
 		       COALESCE(SUM(CASE WHEN i.unread = 1 THEN 1 ELSE 0 END), 0) AS unread_count,
-		       COALESCE(COUNT(i.id), 0) AS item_count
+		       COALESCE(COUNT(i.id), 0) AS item_count,
+		       COALESCE(SUM(CASE WHEN i.triage_status = 'kept' AND i.ai_score IS NOT NULL THEN 1 ELSE 0 END), 0) AS triage_kept,
+		       COALESCE(SUM(CASE WHEN i.triage_status = 'filtered' THEN 1 ELSE 0 END), 0) AS triage_filtered,
+		       COALESCE(SUM(CASE WHEN i.triage_status = 'kept' AND i.ai_score IS NULL THEN 1 ELSE 0 END), 0) AS triage_unscored,
+		       COALESCE(SUM(CASE WHEN i.triage_status = 'pending' THEN 1 ELSE 0 END), 0) AS triage_pending,
+		       COALESCE(SUM(CASE WHEN i.triage_status = 'failed' THEN 1 ELSE 0 END), 0) AS triage_failed
 		FROM feeds f
 		LEFT JOIN feed_fetch_state fs ON fs.feed_id = f.id
 		LEFT JOIN items i ON i.feed_id = f.id
@@ -65,6 +70,11 @@ func (s *Store) ListFeeds() ([]*model.Feed, error) {
 			&f.FetchState.ConsecutiveFailures,
 			&f.UnreadCount,
 			&f.ItemCount,
+			&f.TriageCounts.Kept,
+			&f.TriageCounts.Filtered,
+			&f.TriageCounts.Unscored,
+			&f.TriageCounts.Pending,
+			&f.TriageCounts.Failed,
 		); err != nil {
 			return nil, err
 		}

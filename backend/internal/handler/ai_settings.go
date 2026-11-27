@@ -119,6 +119,7 @@ func settingsView(eval *ai.Evaluator, row model.AISettings) gin.H {
 	source("decision_fallback_mode", "AI_DECISION_FALLBACK_MODE", row.DecisionFallbackMode != nil)
 	source("topics", "AI_TOPICS", row.Topics != nil)
 	source("rss_max_items_per_pull", "AI_RSS_MAX_ITEMS_PER_PULL", row.RSSMaxItemsPerPull != nil)
+	source("rss_pull_interval_seconds", "FUSION_PULL_INTERVAL", row.RSSPullIntervalSeconds != nil)
 	keySource := "none"
 	if d.APIKey != "" {
 		keySource = "env"
@@ -145,13 +146,18 @@ func settingsView(eval *ai.Evaluator, row model.AISettings) gin.H {
 		"decision_l3_priorities":   strings.Join(d.L3Priorities, ","),
 		"decision_low_action":      cfg.Decision.LowAction,
 		"decision_fallback_mode":   cfg.Decision.FallbackMode,
-		"topics":                   cfg.Topics,
-		"rss_max_items_per_pull":   cfg.RSSLimit,
+		"topics":                    cfg.Topics,
+		"rss_max_items_per_pull":    cfg.RSSLimit,
+		"rss_pull_interval_seconds": cfg.RSSPullIntervalSeconds,
 	}
 	stats := eval.Stats()
+	l3Model := cfg.Model
+	if cfg.Provider == "cli" {
+		l3Model = ""
+	}
 	return gin.H{"decision_requested": d.Requested(), "effective": effective, "sources": sources, "overrides": overrides, "presets": ai.DecisionPresets(),
 		"decision_api_key_configured": d.APIKey != "", "decision_api_key_masked": maskedKey(d.APIKey), "decision_api_key_source": keySource,
-		"l3_enabled": stats.Enabled, "l3_model": cfg.Model, "l3_provider": cfg.Provider}
+		"l3_enabled": stats.Enabled, "l3_model": l3Model, "l3_provider": cfg.Provider}
 }
 
 func (h *Handler) getAISettings(c *gin.Context) {
@@ -227,6 +233,9 @@ func (h *Handler) patchAISettings(c *gin.Context) {
 	eval.Reload(cfg)
 	if setter, ok := h.puller.(interface{ SetRSSLimit(int) }); ok {
 		setter.SetRSSLimit(cfg.RSSLimit)
+	}
+	if setter, ok := h.puller.(interface{ SetInterval(time.Duration) }); ok && cfg.RSSPullIntervalSeconds > 0 {
+		setter.SetInterval(time.Duration(cfg.RSSPullIntervalSeconds) * time.Second)
 	}
 	dataResponse(c, settingsView(eval, next))
 }

@@ -50,6 +50,9 @@ func (cfg Config) Merged(row model.AISettings) Config {
 	if row.RSSMaxItemsPerPull != nil {
 		cfg.RSSLimit = *row.RSSMaxItemsPerPull
 	}
+	if row.RSSPullIntervalSeconds != nil {
+		cfg.RSSPullIntervalSeconds = *row.RSSPullIntervalSeconds
+	}
 	preset, _ := decisionPreset(d.Provider)
 	if d.BaseURL == "" {
 		d.BaseURL = preset.DefaultBaseURL
@@ -82,6 +85,9 @@ func ValidateSettingsPatch(p model.AISettings) error {
 	}
 	if p.RSSMaxItemsPerPull != nil && (*p.RSSMaxItemsPerPull < 0 || *p.RSSMaxItemsPerPull > 500) {
 		return errors.New("RSS limit must be 0–500")
+	}
+	if p.RSSPullIntervalSeconds != nil && (*p.RSSPullIntervalSeconds < 300 || *p.RSSPullIntervalSeconds > 86400) {
+		return errors.New("RSS pull interval must be 300–86400 seconds (5–1440 minutes)")
 	}
 	if p.DecisionL3Priorities != nil {
 		for _, v := range strings.Split(*p.DecisionL3Priorities, ",") {

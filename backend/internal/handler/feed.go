@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/0x2E/feedfinder"
+	"news_panel/internal/model"
 	"news_panel/internal/pkg/httpc"
 	"news_panel/internal/pull"
 	"news_panel/internal/store"
@@ -18,11 +19,12 @@ import (
 )
 
 type createFeedRequest struct {
-	GroupID int64  `json:"group_id" binding:"required"`
-	Name    string `json:"name" binding:"required"`
-	Link    string `json:"link" binding:"required"`
-	SiteURL string `json:"site_url"`
-	Proxy   string `json:"proxy"`
+	GroupID   int64  `json:"group_id" binding:"required"`
+	Name      string `json:"name" binding:"required"`
+	Link      string `json:"link" binding:"required"`
+	SiteURL   string `json:"site_url"`
+	Proxy     string `json:"proxy"`
+	AIEnabled *bool  `json:"ai_enabled"`
 }
 
 type updateFeedRequest struct {
@@ -74,6 +76,17 @@ func (h *Handler) listFeeds(c *gin.Context) {
 		return
 	}
 
+	if reporter, ok := h.puller.(interface{ ProgressSnapshot() map[int64]model.FeedProgress }); ok {
+		if snap := reporter.ProgressSnapshot(); len(snap) > 0 {
+			for _, feed := range feeds {
+				if pr, exists := snap[feed.ID]; exists {
+					p := pr
+					feed.Progress = &p
+				}
+			}
+		}
+	}
+
 	listResponse(c, feeds, len(feeds))
 }
 
@@ -94,6 +107,15 @@ func (h *Handler) getFeed(c *gin.Context) {
 		return
 	}
 
+	if reporter, ok := h.puller.(interface{ ProgressSnapshot() map[int64]model.FeedProgress }); ok {
+		if snap := reporter.ProgressSnapshot(); len(snap) > 0 {
+			if pr, exists := snap[feed.ID]; exists {
+				p := pr
+				feed.Progress = &p
+			}
+		}
+	}
+
 	dataResponse(c, feed)
 }
 
@@ -112,6 +134,13 @@ func (h *Handler) createFeed(c *gin.Context) {
 	if err != nil {
 		internalError(c, err, "create feed")
 		return
+	}
+	if req.AIEnabled != nil && *req.AIEnabled {
+		if err := h.store.UpdateFeed(feed.ID, store.UpdateFeedParams{AIEnabled: req.AIEnabled}); err != nil {
+			internalError(c, err, "enable feed ai")
+			return
+		}
+		feed.AIEnabled = true
 	}
 
 	// Trigger initial pull in background.
@@ -160,6 +189,13 @@ func (h *Handler) updateFeed(c *gin.Context) {
 		params.Proxy = req.Proxy
 	}
 
+	var prevLink string
+	if req.Link != nil {
+		if existing, err := h.store.GetFeed(id); err == nil {
+			prevLink = strings.TrimSpace(existing.Link)
+		}
+	}
+
 	if err := h.store.UpdateFeed(id, params); err != nil {
 		if errors.Is(err, store.ErrNotFound) {
 			notFoundError(c, "feed")
@@ -177,6 +213,11 @@ func (h *Handler) updateFeed(c *gin.Context) {
 		}
 		internalError(c, err, "get updated feed")
 		return
+	}
+
+	// Automatically trigger a background refresh when a feed's URL changed and it is active.
+	if req.Link != nil && strings.TrimSpace(feed.Link) != prevLink && !feed.Suspended {
+		h.startFeedRefresh(feed.ID, "updated feed pull failed", true)
 	}
 
 	dataResponse(c, feed)
@@ -346,6 +387,51 @@ func (h *Handler) refreshFeed(c *gin.Context) {
 	// Trigger refresh in background.
 	// Do not use the request context here: once the handler returns, it may be cancelled.
 	h.startFeedRefresh(id, "refresh feed failed", true)
+
+	c.Status(http.StatusAccepted)
+}
+
+func (h *Handler) triageUnscoredFeed(c *gin.Context) {
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		badRequestError(c, "invalid id")
+		return
+	}
+
+	feed, err := h.store.GetFeed(id)
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			notFoundError(c, "feed")
+			return
+		}
+		internalError(c, err, "get feed")
+		return
+	}
+	if !feed.AIEnabled {
+		badRequestError(c, "enable AI scoring on this feed first")
+		return
+	}
+	backfiller, ok := h.puller.(interface {
+		BackfillFeedTriage(ctx context.Context, feedID int64) (int, error)
+	})
+	if !ok {
+		c.Status(http.StatusAccepted)
+		return
+	}
+	if !h.tryStartFeedRefresh(id) {
+		c.Status(http.StatusAccepted)
+		return
+	}
+
+	refreshTimeout := h.feedRefreshTimeout()
+	go func(feedID int64) {
+		defer h.finishFeedRefresh(feedID)
+		ctx, cancel := context.WithTimeout(context.Background(), refreshTimeout)
+		defer cancel()
+		if _, err := backfiller.BackfillFeedTriage(ctx, feedID); err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+			slog.Warn("backfill feed triage failed", "feed_id", feedID, "error", err)
+		}
+	}(id)
 
 	c.Status(http.StatusAccepted)
 }

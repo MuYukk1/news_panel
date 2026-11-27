@@ -284,23 +284,23 @@ export function EditFeedDialog() {
               </Select>
             </div>
 
-            {/* Suspended Toggle */}
+            {/* Enable Feed Toggle (positive polarity matching list row & AI toggle) */}
             <div className="flex items-center justify-between">
               <div>
                 <label
-                  htmlFor="edit-feed-suspended"
+                  htmlFor="edit-feed-enabled"
                   className="text-[13px] font-medium"
                 >
-                  {t("feed.edit.suspendLabel")}
+                  {t("feed.edit.enableLabel")}
                 </label>
                 <p className="text-xs text-muted-foreground">
-                  {t("feed.edit.suspendDescription")}
+                  {t("feed.edit.enableDescription")}
                 </p>
               </div>
               <Switch
-                id="edit-feed-suspended"
-                checked={suspended}
-                onCheckedChange={setSuspended}
+                id="edit-feed-enabled"
+                checked={!suspended}
+                onCheckedChange={(enabled) => setSuspended(!enabled)}
               />
             </div>
 

@@ -1,24 +1,27 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
   ArrowRight,
   CheckCircle2,
+  Loader2,
   Pause,
   Radio,
   RefreshCw,
   Rss,
+  Sparkles,
 } from "lucide-react";
 import { toast } from "sonner";
 import { AppLayout } from "@/components/layout/app-layout";
 import { SidebarTrigger } from "@/components/layout/sidebar-trigger";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import type { PluginHeartbeat } from "@/lib/api";
+import { feedAPI, type Feed, type PluginHeartbeat } from "@/lib/api";
 import { getFeedErrorPreview } from "@/lib/feed-error";
 import { useI18n, type TranslationKey } from "@/lib/i18n";
 import { cn, formatDate } from "@/lib/utils";
 import { useFeedLookup } from "@/queries/feeds";
+import { queryKeys } from "@/queries/keys";
 import { usePluginHeartbeats, useUpdatePlugin } from "@/queries/plugins";
 import { GlassSwitch } from "./glass-switch";
 import {
@@ -50,6 +53,143 @@ function formatExactIso(iso: string | null | undefined, locale: string): string 
   }).format(new Date(parsed));
 }
 
+function FeedTriageProgressCell({
+  feed,
+  t,
+}: {
+  feed: Feed;
+  t: (key: TranslationKey, params?: Record<string, string | number>) => string;
+}) {
+  const progress = feed.progress;
+  const counts = feed.triage_counts ?? {
+    kept: 0,
+    filtered: 0,
+    unscored: feed.item_count,
+    pending: 0,
+    failed: 0,
+  };
+  const total =
+    counts.kept +
+    counts.filtered +
+    counts.unscored +
+    counts.pending +
+    counts.failed;
+
+  if (progress?.phase === "fetching") {
+    return (
+      <div className="min-w-[200px] space-y-1.5">
+        <div className="flex items-center justify-between gap-2 text-[11px] font-medium text-[var(--glass-acc)]">
+          <span className="inline-flex items-center gap-1">
+            <Loader2 className="h-3 w-3 animate-spin" />
+            {t("sources.rss.fetching")}
+          </span>
+        </div>
+        <progress
+          className="np-progress"
+          aria-label={t("sources.rss.fetching")}
+        />
+      </div>
+    );
+  }
+
+  if (progress?.phase === "triaging" && progress.total > 0) {
+    const label = t("sources.rss.triaging", {
+      processed: progress.processed,
+      total: progress.total,
+    });
+    return (
+      <div className="min-w-[200px] space-y-1.5">
+        <div className="flex items-center justify-between gap-2 text-[11px] font-medium text-[var(--glass-acc)]">
+          <span className="inline-flex items-center gap-1">
+            <Loader2 className="h-3 w-3 animate-spin" />
+            {label}
+          </span>
+          <span className="tabular-nums">
+            {Math.round((progress.processed / progress.total) * 100)}%
+          </span>
+        </div>
+        <progress
+          className="np-progress"
+          value={progress.processed}
+          max={progress.total}
+          aria-label={label}
+        />
+      </div>
+    );
+  }
+
+  if (total === 0) {
+    return (
+      <span className="text-[11px] text-[var(--glass-faint)]">
+        {t("sources.rss.noItems")}
+      </span>
+    );
+  }
+
+  const pct = (n: number) => `${(n / total) * 100}%`;
+
+  return (
+    <div className="min-w-[200px] space-y-1.5">
+      <div
+        className="flex h-1.5 w-full overflow-hidden rounded-full bg-[var(--glass-bar)]"
+        role="img"
+        aria-label={`${t("sources.rss.bucketKept", { count: counts.kept })}, ${t("sources.rss.bucketFiltered", { count: counts.filtered })}, ${t("sources.rss.bucketUnscored", { count: counts.unscored })}`}
+      >
+        {counts.kept > 0 && (
+          <div
+            style={{
+              width: pct(counts.kept),
+              backgroundColor: "var(--status-ok)",
+            }}
+          />
+        )}
+        {counts.filtered > 0 && (
+          <div
+            style={{
+              width: pct(counts.filtered),
+              backgroundColor: "var(--glass-faint)",
+            }}
+          />
+        )}
+        {counts.unscored > 0 && (
+          <div
+            style={{
+              width: pct(counts.unscored),
+              backgroundColor: "var(--prio-high)",
+            }}
+          />
+        )}
+        {counts.failed > 0 && (
+          <div
+            style={{
+              width: pct(counts.failed),
+              backgroundColor: "var(--prio-critical)",
+            }}
+          />
+        )}
+      </div>
+      <div className="flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-[11px] tabular-nums text-[var(--glass-sub)]">
+        <span style={{ color: "var(--status-ok)" }}>
+          {t("sources.rss.bucketKept", { count: counts.kept })}
+        </span>
+        <span className="text-[var(--glass-faint)]">
+          {t("sources.rss.bucketFiltered", { count: counts.filtered })}
+        </span>
+        {counts.unscored > 0 && (
+          <span style={{ color: "var(--prio-high)" }}>
+            {t("sources.rss.bucketUnscored", { count: counts.unscored })}
+          </span>
+        )}
+        {counts.failed > 0 && (
+          <span style={{ color: "var(--prio-critical)" }}>
+            {t("sources.rss.bucketFailed", { count: counts.failed })}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function SourcesPage() {
   const { t, locale } = useI18n();
   const navigate = useNavigate();
@@ -61,6 +201,7 @@ export function SourcesPage() {
   const [pendingPluginIds, setPendingPluginIds] = useState<Set<string>>(
     new Set(),
   );
+  const [busyFeedIds, setBusyFeedIds] = useState<Set<number>>(new Set());
 
   const heartbeats = useMemo(
     () => heartbeatsQuery.data ?? [],
@@ -72,6 +213,35 @@ export function SourcesPage() {
     () => feeds.filter((f) => !isPluginSourceFeed(f.link)),
     [feeds],
   );
+
+  const shadowFeedBySourceId = useMemo(() => {
+    const map = new Map<string, Feed>();
+    for (const f of feeds) {
+      if (isPluginSourceFeed(f.link)) {
+        const sourceId = f.link.replace(/^urn:news_panel:source:/, "").trim();
+        if (sourceId) map.set(sourceId, f);
+      }
+    }
+    return map;
+  }, [feeds]);
+
+  const hasActiveRuns = useMemo(
+    () =>
+      rssFeeds.some(
+        (f) => Boolean(f.progress) || (f.triage_counts?.pending ?? 0) > 0,
+      ),
+    [rssFeeds],
+  );
+
+  // Poll feeds every 2.5s only while a pull or AI triage run is actively in progress.
+  useEffect(() => {
+    if (!hasActiveRuns) return;
+    const timer = window.setInterval(() => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.feeds.list() });
+    }, 2500);
+    return () => window.clearInterval(timer);
+  }, [hasActiveRuns, queryClient]);
+
   const rssStats = useMemo(() => {
     const errorFeeds = rssFeeds.filter((f) => Boolean(f.fetch_state.last_error));
     const pausedFeeds = rssFeeds.filter((f) => f.suspended);
@@ -91,12 +261,15 @@ export function SourcesPage() {
   const highlightedFeeds = useMemo(() => {
     return [...rssFeeds]
       .sort((a, b) => {
+        const aBusy = a.progress ? 3 : 0;
+        const bBusy = b.progress ? 3 : 0;
+        if (bBusy !== aBusy) return bBusy - aBusy;
         const aErr = a.fetch_state.last_error ? 2 : a.suspended ? 1 : 0;
         const bErr = b.fetch_state.last_error ? 2 : b.suspended ? 1 : 0;
         if (bErr !== aErr) return bErr - aErr;
         return b.fetch_state.last_checked_at - a.fetch_state.last_checked_at;
       })
-      .slice(0, 12);
+      .slice(0, 20);
   }, [rssFeeds]);
 
   const handleRefresh = useCallback(async () => {
@@ -107,6 +280,50 @@ export function SourcesPage() {
       window.setTimeout(() => setIsRefreshing(false), 320);
     }
   }, [queryClient]);
+
+  const handleRefreshSingleFeed = useCallback(
+    async (feed: Feed) => {
+      setBusyFeedIds((prev) => new Set(prev).add(feed.id));
+      try {
+        await feedAPI.refreshOne(feed.id);
+        toast.success(t("sources.rss.refreshStarted", { name: feed.name }));
+        await queryClient.invalidateQueries({
+          queryKey: queryKeys.feeds.list(),
+        });
+      } catch {
+        toast.error(t("sources.rss.actionFailed"));
+      } finally {
+        setBusyFeedIds((prev) => {
+          const next = new Set(prev);
+          next.delete(feed.id);
+          return next;
+        });
+      }
+    },
+    [queryClient, t],
+  );
+
+  const handleBackfillFeed = useCallback(
+    async (feed: Feed) => {
+      setBusyFeedIds((prev) => new Set(prev).add(feed.id));
+      try {
+        await feedAPI.triageUnscored(feed.id);
+        toast.success(t("sources.rss.backfillStarted", { name: feed.name }));
+        await queryClient.invalidateQueries({
+          queryKey: queryKeys.feeds.list(),
+        });
+      } catch {
+        toast.error(t("sources.rss.actionFailed"));
+      } finally {
+        setBusyFeedIds((prev) => {
+          const next = new Set(prev);
+          next.delete(feed.id);
+          return next;
+        });
+      }
+    },
+    [queryClient, t],
+  );
 
   const handleTogglePlugin = useCallback(
     async (sourceId: string, enabled: boolean) => {
@@ -164,7 +381,10 @@ export function SourcesPage() {
               className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-[var(--glass-border)] bg-[var(--glass-panel)] text-[var(--glass-sub)] transition-colors hover:bg-[var(--glass-soft-hover)] hover:text-[var(--glass-ink)]"
             >
               <RefreshCw
-                className={cn("h-4 w-4", isRefreshing && "animate-spin")}
+                className={cn(
+                  "h-4 w-4",
+                  (isRefreshing || hasActiveRuns) && "animate-spin",
+                )}
               />
             </button>
             <ThemeToggleButton />
@@ -257,6 +477,7 @@ export function SourcesPage() {
                   {heartbeats.map((hb) => {
                     const tone = HEARTBEAT_COLORS[hb.status];
                     const isPending = pendingPluginIds.has(hb.source_id);
+                    const shadowFeed = shadowFeedBySourceId.get(hb.source_id);
                     return (
                       <article
                         key={hb.source_id}
@@ -343,6 +564,14 @@ export function SourcesPage() {
                                 {formatRelativeIsoTime(hb.timestamp, locale)}
                               </dd>
                             </div>
+                            {shadowFeed && (
+                              <div className="col-span-2 border-t border-[var(--glass-inner-line)] pt-2">
+                                <FeedTriageProgressCell
+                                  feed={shadowFeed}
+                                  t={t}
+                                />
+                              </div>
+                            )}
                             <div className="col-span-2 flex items-center justify-between border-t border-[var(--glass-inner-line)] pt-2 text-[11px] text-[var(--glass-sub)]">
                               <span>{t("sources.reportedAt")}</span>
                               <span className="tabular-nums">
@@ -461,30 +690,65 @@ export function SourcesPage() {
                   {t("sources.rss.empty")}
                 </p>
               ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full min-w-[540px] border-collapse text-left text-xs">
+                <div className="np-scroller overflow-x-auto">
+                  <table className="w-full min-w-[760px] border-collapse text-left text-xs">
                     <thead>
                       <tr className="border-b border-[var(--glass-inner-line)] text-[11px] font-semibold text-[var(--glass-faint)]">
                         <th className="py-2 pr-3">{t("sources.rss.colFeed")}</th>
-                        <th className="py-2 pr-3">{t("sources.rss.colStatus")}</th>
-                        <th className="py-2 pr-3">{t("sources.rss.colItems")}</th>
-                        <th className="py-2 pr-3">{t("sources.rss.colChecked")}</th>
-                        <th className="py-2">{t("sources.rss.colError")}</th>
+                        <th className="py-2 pr-3">
+                          {t("sources.rss.colStatus")}
+                        </th>
+                        <th className="py-2 pr-3">
+                          {t("sources.rss.colItems")}
+                        </th>
+                        <th className="py-2 pr-3">
+                          {t("sources.rss.colProgress")}
+                        </th>
+                        <th className="py-2 pr-3">
+                          {t("sources.rss.colChecked")}
+                        </th>
+                        <th className="py-2 pr-3">
+                          {t("sources.rss.colError")}
+                        </th>
+                        <th className="py-2 text-right">
+                          {t("sources.rss.colActions")}
+                        </th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-[var(--glass-inner-line)]">
                       {highlightedFeeds.map((feed) => {
                         const hasError = Boolean(feed.fetch_state.last_error);
+                        const isRunning =
+                          Boolean(feed.progress) || busyFeedIds.has(feed.id);
+                        const unscoredCount =
+                          feed.triage_counts?.unscored ?? 0;
                         return (
                           <tr
                             key={feed.id}
                             className="transition-colors hover:bg-[var(--glass-soft)]"
                           >
-                            <td className="max-w-[220px] truncate py-2.5 pr-3 font-medium text-[var(--glass-ink)]">
-                              {feed.name}
+                            <td className="max-w-[200px] truncate py-3 pr-3 font-medium text-[var(--glass-ink)]">
+                              <div className="flex items-center gap-1.5">
+                                <span className="truncate">{feed.name}</span>
+                                {feed.ai_enabled && (
+                                  <span className="shrink-0 rounded-full bg-[var(--glass-soft)] px-1.5 py-0.5 text-[10px] font-semibold text-[var(--glass-acc)]">
+                                    AI
+                                  </span>
+                                )}
+                              </div>
                             </td>
-                            <td className="py-2.5 pr-3">
-                              {hasError ? (
+                            <td className="py-3 pr-3">
+                              {feed.progress ? (
+                                <span className="inline-flex items-center gap-1 font-semibold text-[var(--glass-acc)]">
+                                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                  {feed.progress.phase === "fetching"
+                                    ? t("sources.rss.fetching")
+                                    : t("sources.rss.triaging", {
+                                        processed: feed.progress.processed,
+                                        total: feed.progress.total,
+                                      })}
+                                </span>
+                              ) : hasError ? (
                                 <span className="inline-flex items-center gap-1 font-semibold text-[var(--prio-critical)]">
                                   <AlertTriangle className="h-3.5 w-3.5" />
                                   {t("feeds.status.error")}
@@ -501,20 +765,58 @@ export function SourcesPage() {
                                 </span>
                               )}
                             </td>
-                            <td className="py-2.5 pr-3 tabular-nums text-[var(--glass-sub)]">
+                            <td className="py-3 pr-3 tabular-nums font-medium text-[var(--glass-ink)]">
                               {feed.item_count}
                             </td>
-                            <td className="py-2.5 pr-3 tabular-nums text-[var(--glass-sub)]">
+                            <td className="py-3 pr-3">
+                              <FeedTriageProgressCell feed={feed} t={t} />
+                            </td>
+                            <td className="py-3 pr-3 tabular-nums text-[var(--glass-sub)]">
                               {feed.fetch_state.last_checked_at > 0
                                 ? formatDate(feed.fetch_state.last_checked_at)
                                 : t("common.unknown")}
                             </td>
-                            <td className="max-w-[260px] truncate py-2.5 text-[var(--prio-critical)]">
+                            <td className="max-w-[200px] truncate py-3 pr-3 text-[var(--prio-critical)]">
                               {feed.fetch_state.last_error
                                 ? getFeedErrorPreview(
                                     feed.fetch_state.last_error,
                                   )
                                 : "—"}
+                            </td>
+                            <td className="py-3 text-right">
+                              <div className="inline-flex items-center justify-end gap-1.5">
+                                {feed.ai_enabled && unscoredCount > 0 && (
+                                  <button
+                                    type="button"
+                                    disabled={isRunning}
+                                    onClick={() =>
+                                      void handleBackfillFeed(feed)
+                                    }
+                                    title={t("sources.rss.backfill")}
+                                    className="inline-flex h-7 items-center gap-1 rounded-lg border border-[var(--glass-border)] bg-[var(--glass-panel)] px-2 text-[11px] font-medium text-[var(--glass-acc)] transition-colors hover:bg-[var(--glass-soft-hover)] disabled:opacity-50"
+                                  >
+                                    <Sparkles className="h-3 w-3" />
+                                    <span>{t("sources.rss.backfill")}</span>
+                                  </button>
+                                )}
+                                <button
+                                  type="button"
+                                  disabled={isRunning || feed.suspended}
+                                  onClick={() =>
+                                    void handleRefreshSingleFeed(feed)
+                                  }
+                                  aria-label={t("sources.rss.refreshOne")}
+                                  title={t("sources.rss.refreshOne")}
+                                  className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-[var(--glass-border)] bg-[var(--glass-panel)] text-[var(--glass-sub)] transition-colors hover:bg-[var(--glass-soft-hover)] hover:text-[var(--glass-ink)] disabled:opacity-50"
+                                >
+                                  <RefreshCw
+                                    className={cn(
+                                      "h-3.5 w-3.5",
+                                      isRunning && "animate-spin",
+                                    )}
+                                  />
+                                </button>
+                              </div>
                             </td>
                           </tr>
                         );

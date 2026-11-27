@@ -22,6 +22,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
+import { Switch } from "@/components/ui/switch";
 import { FeedMultiSelectList } from "@/components/feed/feed-multi-select-list";
 import { useUIStore } from "@/store";
 import { useGroups } from "@/queries/groups";
@@ -53,6 +54,7 @@ export function AddFeedDialog() {
   const [name, setName] = useState("");
   const [groupId, setGroupId] = useState<string>("");
   const [proxy, setProxy] = useState("");
+  const [aiEnabled, setAiEnabled] = useState(false);
   const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isValidating, setIsValidating] = useState(false);
@@ -97,6 +99,7 @@ export function AddFeedDialog() {
     setName("");
     setGroupId("");
     setProxy("");
+    setAiEnabled(false);
     setIsAdvancedOpen(false);
     resetBatchState();
   };
@@ -254,6 +257,7 @@ export function AddFeedDialog() {
         link,
         name: name.trim() || title || link,
         group_id: selectedGroupId,
+        ai_enabled: aiEnabled,
         ...(siteUrl ? { site_url: siteUrl } : {}),
       };
 
@@ -370,6 +374,26 @@ export function AddFeedDialog() {
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+
+            {/* AI Scoring Opt-in Toggle */}
+            <div className="flex items-center justify-between">
+              <div>
+                <label
+                  htmlFor="add-feed-ai-enabled"
+                  className="text-[13px] font-medium"
+                >
+                  {t("feed.edit.aiEnabledLabel")}
+                </label>
+                <p className="text-xs text-muted-foreground">
+                  {t("feeds.aiToggle.tooltip")}
+                </p>
+              </div>
+              <Switch
+                id="add-feed-ai-enabled"
+                checked={aiEnabled}
+                onCheckedChange={setAiEnabled}
+              />
             </div>
 
             {/* Advanced Section */}
