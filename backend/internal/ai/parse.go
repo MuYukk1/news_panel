@@ -14,7 +14,7 @@ import (
 
 var fenceRe = regexp.MustCompile("(?s)```(?:json)?\\s*(.*?)```")
 
-// verdict is the raw L2 model output before normalization. Score is float64 so
+// verdict is the raw scoring model output before normalization. Score is float64 so
 // "85.0"/85.5 style responses do not break decoding; Keep is optional and
 // inferred from the score threshold when absent.
 type verdict struct {
@@ -30,6 +30,10 @@ type verdict struct {
 // fences, or prose mixed with JSON. Objects mentioning domain/score are
 // preferred so unrelated JSON fragments in prose do not win.
 func extractJSONObject(text string) (string, error) {
+	return extractPreferredObject(text, `"domain"`, `"score"`)
+}
+
+func extractPreferredObject(text, field1, field2 string) (string, error) {
 	sources := make([]string, 0, 4)
 	for _, m := range fenceRe.FindAllStringSubmatch(text, -1) {
 		sources = append(sources, m[1])
@@ -46,7 +50,7 @@ func extractJSONObject(text string) (string, error) {
 			if !ok || !json.Valid([]byte(obj)) {
 				continue
 			}
-			if strings.Contains(obj, `"domain"`) || strings.Contains(obj, `"score"`) {
+			if strings.Contains(obj, field1) || strings.Contains(obj, field2) {
 				return obj, nil
 			}
 			if fallback == "" {

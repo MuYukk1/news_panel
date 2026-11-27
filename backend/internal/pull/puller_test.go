@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"news_panel/internal/triage"
 	"path/filepath"
+	"slices"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -284,5 +286,93 @@ func TestPullerSkipsPluginShadowFeedsEvenWhenUnsuspended(t *testing.T) {
 	}
 	if after.FetchState.LastCheckedAt != 0 || after.FetchState.LastError != "" {
 		t.Fatalf("expected shadow feed to remain untouched by puller, got %+v", after.FetchState)
+	}
+}
+
+type rssEvalFunc func(context.Context, triage.Input) (triage.Result, error)
+
+func (f rssEvalFunc) Evaluate(ctx context.Context, in triage.Input) (triage.Result, error) {
+	return f(ctx, in)
+}
+
+func TestRSSBudgetCountsOnlyNewItems(t *testing.T) {
+	t.Setenv("AI_RSS_MAX_ITEMS_PER_PULL", "3")
+	st, err := store.New(filepath.Join(t.TempDir(), "rss.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	var round atomic.Int64
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/rss+xml")
+		fmt.Fprint(w, `<rss version="2.0"><channel><title>Feed</title><link>https://example.test</link>`)
+		item := func(id int) {
+			fmt.Fprintf(w, `<item><guid>g%d</guid><title>title</title><link>https://example.test/%d</link><description>body</description><pubDate>Mon, 02 Jan 2006 15:04:%02d GMT</pubDate></item>`, id, id, id)
+		}
+		item(5) // already present before this source opts in
+		if round.Load() > 0 {
+			for _, i := range []int{1, 2, 4, 3, 4} {
+				item(i)
+			}
+		}
+		fmt.Fprint(w, `</channel></rss>`)
+	}))
+	defer srv.Close()
+	feed, err := st.CreateFeed(1, "Feed", srv.URL, "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := New(st, &config.Config{PullInterval: 1800, PullTimeout: 5, PullConcurrency: 1, PullMaxBackoff: 604800, AllowPrivateFeeds: true})
+	var seen []string
+	p.SetEvaluator(rssEvalFunc(func(ctx context.Context, in triage.Input) (triage.Result, error) {
+		seen = append(seen, in.ExternalID)
+		if in.SourceType != "rss" || in.SourceID == "" || in.Title != "title" || in.Author != "Feed" || in.Content != "body" || in.URL == "" || in.PublishedAt.Location() != time.UTC {
+			t.Errorf("incomplete RSS input %+v", in)
+		}
+		switch in.ExternalID {
+		case "g4":
+			return triage.Result{}, fmt.Errorf("temporary model failure")
+		case "g3":
+			return triage.Result{}, nil // invalid result
+		}
+		score := 80
+		return triage.Result{Domain: "ai", Priority: "high", TriageStatus: "kept", AIScore: &score}, nil
+	}))
+	refresh := func() {
+		t.Helper()
+		if err := p.RefreshFeed(context.Background(), feed.ID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	refresh()
+	if len(seen) != 0 {
+		t.Fatal("RSS AI ran before opt-in")
+	}
+	enabled := true
+	if err := st.UpdateFeed(feed.ID, store.UpdateFeedParams{AIEnabled: &enabled}); err != nil {
+		t.Fatal(err)
+	}
+	round.Store(1)
+	refresh()
+	refresh()
+	if !slices.Equal(seen, []string{"g4", "g3", "g2"}) {
+		t.Fatalf("evaluated %v", seen)
+	}
+	saved, err := st.ListItems(store.ListItemsParams{FeedID: &feed.ID})
+	if err != nil || len(saved) != 5 {
+		t.Fatalf("stored=%d err=%v", len(saved), err)
+	}
+	for _, item := range saved {
+		want := "kept"
+		if item.GUID == "g4" || item.GUID == "g3" {
+			want = "failed"
+		}
+		if item.TriageStatus != want || (item.AIScore != nil) != (item.GUID == "g2") {
+			t.Errorf("incorrect result for %s: %+v", item.GUID, item.Result)
+		}
+	}
+	updated, err := st.GetFeed(feed.ID)
+	if err != nil || updated.FetchState.LastSuccessAt == 0 || updated.FetchState.ConsecutiveFailures != 0 {
+		t.Fatal("evaluation error altered fetch status")
 	}
 }

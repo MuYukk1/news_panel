@@ -153,6 +153,7 @@ func (h *Handler) SetupRouter() *gin.Engine {
 			auth.GET("/items", h.listItems)
 			auth.GET("/v1/items", h.listItems)
 			auth.GET("/v1/items/:id", h.getItem)
+			auth.GET("/v1/ai/stats", h.aiStats)
 			auth.GET("/v1/plugins/heartbeats", h.listHeartbeats)
 			auth.PATCH("/v1/plugins/:source_id", h.updatePlugin)
 			auth.GET("/items/:id", h.getItem)

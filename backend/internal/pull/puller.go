@@ -4,18 +4,24 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"news_panel/internal/ai"
+	"news_panel/internal/triage"
+	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
+	"golang.org/x/sync/semaphore"
 	"news_panel/internal/config"
 	"news_panel/internal/model"
 	"news_panel/internal/pullpolicy"
 	"news_panel/internal/store"
-	"golang.org/x/sync/semaphore"
 )
 
 type Puller struct {
+	evaluator   triage.TriageEvaluator
+	rssLimit    int
 	store       *store.Store
 	config      *config.Config
 	logger      *slog.Logger
@@ -28,6 +34,7 @@ type Puller struct {
 func New(st *store.Store, cfg *config.Config) *Puller {
 	return &Puller{
 		store:       st,
+		rssLimit:    ai.RSSMaxItemsPerPull(),
 		config:      cfg,
 		logger:      slog.Default(),
 		interval:    time.Duration(cfg.PullInterval) * time.Second,
@@ -36,6 +43,9 @@ func New(st *store.Store, cfg *config.Config) *Puller {
 		concurrency: semaphore.NewWeighted(int64(cfg.PullConcurrency)),
 	}
 }
+
+// SetEvaluator installs the shared pipeline before starting the puller.
+func (p *Puller) SetEvaluator(eval triage.TriageEvaluator) { p.evaluator = eval }
 
 // Start begins periodic feed pulling. Blocks until context is cancelled.
 func (p *Puller) Start(ctx context.Context) error {
@@ -190,9 +200,9 @@ func (p *Puller) pullFeed(ctx context.Context, feed *model.Feed) {
 		})
 	}
 
-	newCount, err := p.store.BatchCreateItemsIgnore(feed.ID, inputs)
+	newCount, err := p.saveItems(ctx, feed, inputs)
 	if err != nil {
-		p.logger.Error("failed to batch create items", "feed_id", feed.ID, "error", err)
+		p.logger.Error("failed to save feed items", "feed_id", feed.ID, "error", err)
 		return
 	}
 
@@ -223,6 +233,45 @@ func (p *Puller) pullFeed(ctx context.Context, feed *model.Feed) {
 	}
 
 	p.logger.Info("feed pulled successfully", "feed_id", feed.ID, "feed_name", feed.Name, "new_items", newCount)
+}
+
+func (p *Puller) saveItems(ctx context.Context, feed *model.Feed, inputs []store.BatchCreateItemInput) (int, error) {
+	if !feed.AIEnabled || p.evaluator == nil {
+		return p.store.BatchCreateItemsIgnore(feed.ID, inputs)
+	}
+	sort.SliceStable(inputs, func(i, j int) bool { return inputs[i].PubDate > inputs[j].PubDate })
+	count, pending, err := p.store.BatchCreateItemsWithTriageLimit(feed.ID, inputs, p.rssLimit)
+	if err != nil {
+		return 0, err
+	}
+	var firstSaveErr error
+	for _, item := range pending {
+		input := triage.Input{SourceID: strconv.FormatInt(feed.ID, 10), SourceType: "rss", ExternalID: item.GUID,
+			URL: item.Link, Title: item.Title, Content: item.Content, Author: feed.Name, PublishedAt: time.Unix(item.PubDate, 0).UTC()}
+		var result triage.Result
+		err := ctx.Err()
+		if err == nil {
+			result, err = p.evaluator.Evaluate(ctx, input)
+		}
+		if err == nil {
+			err = result.Validate()
+		}
+		if err != nil {
+			p.logger.Warn("RSS triage failed", "feed_id", feed.ID, "item_id", item.ID)
+			result = triage.Result{Domain: "other", Priority: "normal", TriageStatus: "failed"}
+		}
+		// A cancelled pull must still finalize the pending rows it just committed.
+		saveCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		err = p.store.UpdateTriage(saveCtx, item.ID, result)
+		cancel()
+		if err != nil {
+			if firstSaveErr == nil {
+				firstSaveErr = err
+			}
+			p.logger.Error("failed to save RSS triage", "feed_id", feed.ID, "item_id", item.ID, "error", err)
+		}
+	}
+	return count, firstSaveErr
 }
 
 // RefreshAll triggers refresh for all non-suspended feeds and waits until all
